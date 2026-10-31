@@ -1,0 +1,78 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,100..900;1,100..900&family=Noto+Sans+Ethiopic:wght@100..900&display=swap');
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------
+   Post Finance brand tokens (Brand Identity Manual, March 2026)
+   Blue #2c317b · Gold #f3ad1c · Black #000000 · White #ffffff
+   Tints are the approved 001 (blue) / 002 (gold) steps.
+------------------------------------------------------------------- */
+@theme {
+  /* 001 — Post Finance Blue */
+  --color-pf-blue: #2c317b;
+  --color-pf-blue-90: #3f4382;
+  --color-pf-blue-80: #52558a;
+  --color-pf-blue-70: #666893;
+  --color-pf-blue-60: #7b7c9c;
+  --color-pf-blue-50: #9193a7;
+  --color-pf-blue-gradient-end: #294896;
+
+  /* 002 — Post Finance Orange / Gold */
+  --color-pf-gold: #f3ad1c;
+  --color-pf-gold-90: #f3b333;
+  --color-pf-gold-80: #f3b848;
+  --color-pf-gold-70: #f3be5d;
+  --color-pf-gold-60: #f3c370;
+  --color-pf-gold-50: #f3c981;
+
+  /* Deep navy used for the motif on blue, and as the dark-mode surface */
+  --color-pf-night: #0d1040;
+
+  --font-sans: "Archivo", "Noto Sans Ethiopic", system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #0f172a;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0d1040;
+  --foreground: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  /* Archivo for English, Noto Sans Ethiopic picks up Amharic glyphs */
+  font-family: var(--font-sans);
+}
+
+/* Headline: Archivo Black, used sparingly for the big brand statement */
+.archivo-headline {
+  font-family: "Archivo", "Noto Sans Ethiopic", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 900;
+  font-style: normal;
+  font-variation-settings: "wdth" 100;
+}
+
+/* Amharic content: Noto Sans Ethiopic first */
+:lang(am) {
+  font-family: "Noto Sans Ethiopic", "Archivo", sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}

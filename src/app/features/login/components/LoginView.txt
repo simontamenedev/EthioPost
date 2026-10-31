@@ -1,0 +1,111 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { motion } from "framer-motion";
+import { ArrowLeft, ArrowRight, LockKeyhole, Mail } from "lucide-react";
+import { Logo } from "./brand-logo";
+import { ThemeToggle } from "./theme-toggle";
+import { item, stagger } from "../styles/login-motion";
+import { Showcase } from "./login-showcase";
+import { ImportDemo } from "./ImportDemo";
+import { field, input, link } from "../styles/login-styles";
+
+export default function LoginView() {
+  return (
+    <main style={{ fontFamily: '"Archivo", "Noto Sans Ethiopic", system-ui, sans-serif' }} className="grid min-h-screen bg-white transition-colors dark:bg-[#0d1040] lg:grid-cols-[1.1fr_0.9fr]">
+      {/* brand panel — Post Finance Blue, white logo, gold for emphasis */}
+      <section className="relative hidden overflow-hidden bg-[#2c317b] px-10 pt-8 text-white dark:bg-[#161a5c] lg:flex lg:flex-col lg:justify-between xl:px-14">
+        <Link href="/" aria-label="Post Finance home" className="relative z-10 inline-flex w-fit">
+          <Logo variant="white" priority className="h-14" />
+        </Link>
+
+        <motion.div variants={stagger} initial="hidden" animate="show" className="relative z-10 max-w-[620px] py-6">
+          <motion.h1 variants={item} className="archivo-headline text-3xl leading-[1.1] tracking-tight xl:text-4xl">
+            Clear commissions.<br /><span className="text-[#f3ad1c]">Confident reporting</span><br />at every level.
+          </motion.h1>
+          <motion.p variants={item} className="mt-3 max-w-md text-sm leading-6 text-white/80">
+            Drop in an Excel file and review commission data by agent, branch, and district.
+          </motion.p>
+          {/* ImportDemo is the first scene of the Showcase (Import → Dashboard → Reports) */}
+          <motion.div variants={item} className="mt-6"><Showcase importDemo={<ImportDemo />} /></motion.div>
+        </motion.div>
+
+        {/* footer + motif band (official pattern, two-row variant, aspect ratio preserved) */}
+        <div className="relative z-10 -mx-10 xl:-mx-14">
+          <p className="px-10 pb-4 text-xs text-white/70 xl:px-14">© 2026 Post Finance. Serving every corner of Ethiopia.</p>
+          <Image src="/brand/pattern-band-white.svg" alt="" aria-hidden width={1386} height={135} unoptimized draggable={false} className="block h-auto w-full opacity-[0.14]" />
+        </div>
+      </section>
+
+      {/* form panel */}
+      <section className="flex min-h-screen flex-col px-6 py-7 sm:px-12 lg:px-14 xl:px-20">
+        <div className="flex items-center justify-between">
+          {/* shown on small screens only; the brand panel carries the logo on lg+ */}
+          <Link href="/" aria-label="Post Finance home" className="inline-flex lg:invisible">
+            <span className="block dark:hidden"><Logo variant="primary" className="h-10" /></span>
+            <span className="hidden dark:block"><Logo variant="white" className="h-10" /></span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition hover:text-[#2c317b] dark:text-white/70 dark:hover:text-[#f3ad1c]">
+              <ArrowLeft size={15} /> <span className="hidden sm:inline">Back to home</span><span className="sm:hidden">Home</span>
+            </Link>
+            <ThemeToggle />
+          </div>
+        </div>
+
+        <motion.div variants={stagger} initial="hidden" animate="show" className="mx-auto flex w-full max-w-[390px] flex-1 flex-col justify-center py-12">
+          <motion.div variants={item} className="mb-8 flex size-12 items-center justify-center rounded-2xl bg-[#2c317b]/10 text-[#2c317b] dark:bg-[#f3ad1c]/15 dark:text-[#f3ad1c]">
+            <LockKeyhole size={22} />
+          </motion.div>
+          <motion.p variants={item} className="text-sm font-semibold text-[#2c317b] dark:text-[#f3ad1c]">Welcome back</motion.p>
+          <motion.h2 variants={item} className="mt-2 text-3xl font-bold tracking-tight text-[#2c317b] dark:text-white">Sign in to your account</motion.h2>
+          <motion.p variants={item} className="mt-2 text-sm leading-6 text-slate-600 dark:text-white/70">Enter your details below to access your dashboard.</motion.p>
+
+          <form className="mt-8 space-y-5">
+            <motion.div variants={item}>
+              <label htmlFor="email" className="mb-2 block text-sm font-semibold text-slate-800 dark:text-white">Email address</label>
+              <div className={field}>
+                <Mail size={17} className="text-slate-500 dark:text-white/60" />
+                <input id="email" name="email" type="email" autoComplete="email" placeholder="Enter your email" className={input} />
+              </div>
+            </motion.div>
+            <motion.div variants={item}>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label htmlFor="password" className="text-sm font-semibold text-slate-800 dark:text-white">Password</label>
+                <button type="button" className={`text-xs ${link}`}>Forgot password?</button>
+              </div>
+              <div className={field}>
+                <LockKeyhole size={17} className="text-slate-500 dark:text-white/60" />
+                <input id="password" name="password" type="password" autoComplete="current-password" placeholder="Enter your password" className={input} />
+              </div>
+            </motion.div>
+            <motion.label variants={item} className="flex items-center gap-2.5 text-sm text-slate-700 dark:text-white/80">
+              <input type="checkbox" className="size-4 rounded border-slate-300 accent-[#2c317b] dark:accent-[#f3ad1c]" />
+              Keep me signed in
+            </motion.label>
+            {/* Gold = the one important action; blue text on gold keeps contrast (≈5.7:1) */}
+            <motion.button
+              variants={item}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.98 }}
+              type="button"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#f3ad1c] text-sm font-bold text-[#2c317b] shadow-sm transition hover:brightness-95 focus:outline-none focus-visible:ring-4 focus-visible:ring-[#2c317b]/30 dark:focus-visible:ring-white/40"
+            >
+              Sign in <ArrowRight size={16} />
+            </motion.button>
+          </form>
+
+          <motion.div variants={item} className="mt-7 flex items-center gap-3 text-xs text-slate-500 dark:text-white/60">
+            <span className="h-px flex-1 bg-slate-200 dark:bg-white/15" />Secure access<span className="h-px flex-1 bg-slate-200 dark:bg-white/15" />
+          </motion.div>
+          <motion.p variants={item} className="mt-5 text-center text-xs leading-5 text-slate-600 dark:text-white/70">
+            Need help accessing your account? <button type="button" className={link}>Contact support</button>
+          </motion.p>
+        </motion.div>
+
+        <p className="text-center text-[11px] text-slate-500 dark:text-white/60">By continuing, you agree to Post Finance&apos;s terms of service and privacy policy.</p>
+      </section>
+    </main>
+  );
+}
