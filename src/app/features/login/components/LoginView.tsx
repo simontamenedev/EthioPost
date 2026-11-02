@@ -111,7 +111,9 @@ export default function LoginView() {
             <motion.div variants={item}>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <label htmlFor="password" className="text-sm font-semibold text-slate-800 dark:text-white">Password</label>
-                <button type="button" className={`text-xs ${link}`}>Forgot password?</button>
+                <Link href="/forgot-password" className="text-xs font-semibold text-[#2c317b] hover:underline dark:text-[#f3ad1c]">
+  Forgot password?
+</Link>
               </div>
               <div className={field}>
                 <LockKeyhole size={17} className="text-slate-500 dark:text-white/60" />

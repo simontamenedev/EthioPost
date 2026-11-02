@@ -26,6 +26,17 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
+    # password reset + email
+    frontend_url: str = "http://localhost:3000"
+    reset_token_expire_minutes: int = 30
+
+    smtp_host: str = ""            # empty = don't send, just log the link (dev)
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "Post Finance <no-reply@example.com>"
+    smtp_use_ssl: bool = False     # True for port 465, otherwise STARTTLS
+
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 

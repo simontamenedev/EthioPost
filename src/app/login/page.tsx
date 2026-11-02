@@ -1,3 +1,4 @@
+import { GuestGuard } from "../../components/auth/guest-guard";
 import LoginView from "../features/login/components/LoginView";
 
 export const metadata = {
@@ -6,5 +7,5 @@ export const metadata = {
 };
 
 export default function LoginPage() {
-  return <LoginView />;
+  return <GuestGuard><LoginView /></GuestGuard>;
 }

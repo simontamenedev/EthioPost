@@ -7,12 +7,15 @@ import { HOME_PATH, LOGIN_PATH, SESSION_COOKIE } from "./src/lib/auth/constants"
  *   signed in    → /login                  ⇒  /
  * The cookie only says "a session exists"; the API still verifies the Bearer token on every call.
  */
+const PUBLIC_PATHS = [LOGIN_PATH, "/forgot-password", "/reset-password"];
+
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
   const isLogin = pathname === LOGIN_PATH;
+  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
-  if (!hasSession && !isLogin) {
+  if (!hasSession && !isPublic) {
     const url = new URL(LOGIN_PATH, request.url);
     if (pathname !== HOME_PATH) url.searchParams.set("next", `${pathname}${search}`);
     return NextResponse.redirect(url);

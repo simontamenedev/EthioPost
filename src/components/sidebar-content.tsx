@@ -5,6 +5,8 @@ import { LayoutGroup, motion, type Variants } from "framer-motion";
 import { CircleHelp, LogOut } from "lucide-react";
 import { navSections, type NavKey } from "./dashboard-nav";
 import { Logo } from "../app/features/login/components/brand-logo";
+import { useAuthStore } from "../lib/auth/auth-store";
+import { useLogout } from "../lib/auth/use-auth";
 
 const list: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.045, delayChildren: 0.1 } } };
 const row: Variants = { hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: "easeOut" } } };
@@ -20,6 +22,11 @@ type Props = {
 
 /* Post Finance Blue surface, white logo, gold = active state. */
 export function SidebarContent({ active, groupId, onNavigate }: Props) {
+  // inside SidebarContent:
+const user = useAuthStore((s) => s.user);
+const logout = useLogout();
+const displayName = user?.name ?? "Account";
+const initials = displayName.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
   return (
     <div className="flex h-full flex-col bg-[#2c317b] text-white dark:bg-[#161a5c]">
       <Link href="/" onClick={onNavigate} aria-label="Post Finance home" className={`flex h-[76px] shrink-0 items-center border-b border-white/10 px-6 ${focus}`}>
@@ -64,15 +71,22 @@ export function SidebarContent({ active, groupId, onNavigate }: Props) {
       </LayoutGroup>
 
       <div className="shrink-0 p-4">
-        <Link href="/login" onClick={onNavigate} className={`group mt-4 flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-white/10 ${focus}`}>
-          <span className="flex size-9 items-center justify-center rounded-full bg-[#f3ad1c] text-xs font-bold text-[#2c317b]">AA</span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-semibold">Admin Account</span>
-            <span className="block truncate text-[11px] text-white/70">Administrator</span>
-          </span>
-          <LogOut size={16} className="text-white/70 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-white" />
-        </Link>
-      </div>
+  <button
+    type="button"
+    onClick={() => { onNavigate?.(); logout(); }}
+    aria-label="Log out"
+    className={`group mt-4 flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-white/10 ${focus}`}
+  >
+    <span className="flex size-9 items-center justify-center rounded-full bg-[#f3ad1c] text-xs font-bold text-[#2c317b]">
+      {initials}
+    </span>
+    <span className="min-w-0 flex-1">
+      <span className="block truncate text-xs font-semibold">{displayName}</span>
+      <span className="block truncate text-[11px] capitalize text-white/70">{user?.role ?? ""}</span>
+    </span>
+    <LogOut size={16} className="text-white/70 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-white" />
+  </button>
+</div>
     </div>
   );
 }

@@ -6,13 +6,25 @@ from sqlalchemy.exc import IntegrityError
 from app.api.router import api_router
 from app.api.routes import health
 from app.core.config import settings
+from app.core.audit_context import request_ctx
 
 app = FastAPI(
     title=settings.app_name,
     description=settings.app_description,
     version=settings.app_version,
 )
-
+@app.middleware("http")
+async def audit_context_middleware(request: Request, call_next):
+    token = request_ctx.set(
+        {
+            "ip_address": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+        }
+    )
+    try:
+        return await call_next(request)
+    finally:
+        request_ctx.reset(token)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

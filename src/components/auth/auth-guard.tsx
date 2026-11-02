@@ -26,7 +26,14 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (me.data) setUser(me.data);
   }, [me.data, setUser]);
-
+useEffect(() => {
+  // adjust to your api client's error shape (status / statusCode)
+  const status = (me.error as { status?: number } | null)?.status;
+  if (status === 401) {
+    logout();
+    router.replace(LOGIN_PATH);
+  }
+}, [me.error, logout, router]);
   useEffect(() => {
     if (hasHydrated && !token) {
       logout(); // also clears the proxy cookie so /login isn't bounced back

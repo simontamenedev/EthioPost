@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
-import type { User } from "@/lib/api/types";
 import { clearSessionCookie, isTokenExpired, writeSessionCookie } from "./token";
+import { User } from "../api/types";
 
 type AuthState = {
   token: string | null;

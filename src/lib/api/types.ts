@@ -54,3 +54,6 @@ export type ListParams = {
   q?: string;
   status?: Status;
 };
+
+export type CountStat = { total: number; active: number; inactive: number };
+export type DashboardStats = { agents: CountStat; branches: CountStat; districts: CountStat };
