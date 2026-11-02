@@ -15,12 +15,13 @@ type ModalProps = {
   children: ReactNode;
 };
 
-const widths = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-3xl" };
+const widths = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-3xl" };
 
 export function Modal({ open, onClose, title, description, size = "md", children }: ModalProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
+
   useEffect(() => {
     onCloseRef.current = onClose;
   });
@@ -65,11 +66,12 @@ export function Modal({ open, onClose, title, description, size = "md", children
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 380, damping: 36 }}
             className={cn(
-              "relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl outline-none sm:rounded-3xl dark:bg-[#161a5c]",
+              // fixed height cap: the panel never exceeds the viewport, the body scrolls
+              "relative flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl outline-none sm:max-h-[calc(100dvh-3rem)] sm:rounded-3xl dark:bg-[#161a5c]",
               widths[size],
             )}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5 dark:border-white/10">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-6 py-4 dark:border-white/10">
               <div>
                 <h2 id={titleId} className="text-lg font-bold tracking-tight text-[#2c317b] dark:text-white">{title}</h2>
                 {description && <p className="mt-1 text-sm text-slate-600 dark:text-white/70">{description}</p>}
@@ -83,7 +85,7 @@ export function Modal({ open, onClose, title, description, size = "md", children
                 <X size={18} />
               </button>
             </div>
-            <div className="overflow-y-auto px-6 py-5">{children}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">{children}</div>
           </motion.div>
         </div>
       )}

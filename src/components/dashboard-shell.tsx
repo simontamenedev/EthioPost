@@ -96,9 +96,9 @@ export default function DashboardShell({ active, children }: DashboardShellProps
             </div>
           </header>
 
-          <motion.main initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut" }}>
-            {children}
-          </motion.main>
+         <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35, ease: "easeOut" }}>
+  {children}
+</motion.main>
         </div>
       </div>
     </MotionConfig>

@@ -20,7 +20,6 @@ export const navSections: NavSection[] = [
     title: "Workspace",
     items: [
       { label: "Overview", href: "/", key: "overview", icon: LayoutDashboard },
-      { label: "Commission reports", href: "/reports", key: "reports", icon: FileSpreadsheet },
     ],
   },
   {
@@ -35,7 +34,7 @@ export const navSections: NavSection[] = [
     title: "User management",
     items: [
       { label: "Users", href: "/users", key: "users", icon: UserCog },
-      { label: "Roles & permissions", href: "/roles", key: "roles", icon: ShieldCheck },
+      // { label: "Roles & permissions", href: "/roles", key: "roles", icon: ShieldCheck },
     ],
   },
 ];

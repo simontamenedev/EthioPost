@@ -86,7 +86,7 @@ export function DataTable<T>({
             )}
 
             {!isLoading && !isError && rows?.map((row) => (
-              <tr key={getRowId(row)} className="transition-colors hover:bg-slate-50 dark:hover:bg-white/5">
+              <tr key={getRowId(row)} className="transition-colors  dark:hover:bg-white/5">
                 {columns.map((c) => (
                   <td key={c.key} className={cn(cellBase, c.className)}>{c.cell(row)}</td>
                 ))}

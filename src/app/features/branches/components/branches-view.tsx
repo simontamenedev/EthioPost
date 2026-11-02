@@ -73,6 +73,8 @@ export function BranchesView() {
       toCreatePayload={toPayload}
       toUpdatePayload={toPayload}
       rowLabel={(b) => b.name}
+      modalSize="md"
+
     />
   );
 }

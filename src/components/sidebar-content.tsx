@@ -29,7 +29,7 @@ export function SidebarContent({ active, groupId, onNavigate }: Props) {
       <LayoutGroup id={groupId}>
         <motion.nav aria-label="Main navigation" variants={list} initial="hidden" animate="show" className="flex-1 space-y-6 overflow-y-auto px-4 py-6">
           {navSections.map((section) => (
-            <div key={section.title}>
+            <div key={section.title} className="mt-4">
               <motion.p variants={row} className="px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-white/65">
                 {section.title}
               </motion.p>

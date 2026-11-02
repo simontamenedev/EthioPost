@@ -1,6 +1,5 @@
 "use client";
 
-
 import { RoleBadge, StatusBadge } from "../../../../components/ui/badge";
 import { Column } from "../../../../components/ui/data-table";
 import { FieldConfig } from "../../../../components/ui/entity-form";
@@ -71,6 +70,7 @@ export function UsersView() {
       })}
       rowLabel={(u) => u.name}
       canDeleteRow={(u) => u.id !== me?.id}
+      modalSize="sm"
     />
   );
 }

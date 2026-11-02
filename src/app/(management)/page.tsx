@@ -3,14 +3,14 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { BriefcaseBusiness, Building2, MapPinned, WalletCards } from "lucide-react";
-import { summarizeCommissions } from "../lib/commission-excel";
-import { useCommissionData } from "../components/commission-data";
-import DashboardShell from "../components/dashboard-shell";
-import { stagger, rise } from "../components/dashboard-motion";
-import { StatCard } from "../components/stat-card";
-import { RankedBars } from "../components/ranked-bars";
-import { DistrictDonut } from "../components/district-donut";
-import { HighlightsCard } from "../components/highlights-card";
+import { useCommissionData } from "../../components/commission-data";
+import DashboardShell from "../../components/dashboard-shell";
+import { stagger, rise } from "../../components/dashboard-motion";
+import { StatCard } from "../../components/stat-card";
+import { RankedBars } from "../../components/ranked-bars";
+import { DistrictDonut } from "../../components/district-donut";
+import { summarizeCommissions } from "../../lib/commission-excel";
+import { HighlightsCard } from "../../components/highlights-card";
 
 const avg = (total: number, n: number) => (n > 0 ? total / n : 0);
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -29,7 +29,6 @@ export default function HomePage() {
   }, [records]);
 
   return (
-    <DashboardShell active="overview">
       <div className="mx-auto max-w-[1500px] px-5 py-7 sm:px-8 lg:px-10">
         <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="mb-5 font-mono text-xs font-medium text-slate-500 dark:text-white/60">
           /
@@ -73,6 +72,5 @@ export default function HomePage() {
           </motion.div>
         )}
       </div>
-    </DashboardShell>
   );
 }

@@ -58,6 +58,7 @@ export function DistrictsView() {
       toCreatePayload={toPayload}
       toUpdatePayload={toPayload}
       rowLabel={(d) => d.name}
+      modalSize="md"
     />
   );
 }

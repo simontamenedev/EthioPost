@@ -54,6 +54,8 @@ type ResourceManagerProps<TRow extends { id: string }, TForm extends FieldValues
   /** e.g. stop an admin deleting their own account */
   canDeleteRow?: (row: TRow) => boolean;
   toolbarExtra?: ReactNode;
+  /** width of the add/edit modal */
+  modalSize?: "sm" | "md" | "lg";
 };
 
 type ModalState<TRow> = { mode: "create" } | { mode: "edit"; row: TRow } | null;
@@ -62,7 +64,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
   title, description, singular, searchPlaceholder = "Search…",
   columns, useList, createMutation, updateMutation, deleteMutation,
   createSchema, updateSchema, fields, emptyValues, toFormValues, toCreatePayload, toUpdatePayload,
-  rowLabel, canDeleteRow, toolbarExtra,
+  rowLabel, canDeleteRow, toolbarExtra, modalSize = "md",
 }: ResourceManagerProps<TRow, TForm, TCreate, TUpdate>) {
   const isAdmin = useIsAdmin();
 
@@ -120,43 +122,48 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
   const schema = mode === "edit" ? (updateSchema ?? createSchema) : createSchema;
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 px-5 py-8 sm:px-8 lg:px-10">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+    <div className="mx-auto w-full max-w-7xl space-y-5 px-5 py-8 sm:px-8 lg:px-10">
+      {/* Page header: title + description on the left, primary action on the right */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight text-[#2c317b] dark:text-white">{title}</h1>
           <p className="mt-1 text-sm text-slate-600 dark:text-white/70">{description}</p>
         </div>
-        {isAdmin ? (
-          <Button variant="primary" icon={<Plus size={16} />} onClick={() => setModal({ mode: "create" })}>
-            Add {singular}
-          </Button>
-        ) : (
-          <Badge tone="blue">View only</Badge>
-        )}
+        <div className="shrink-0">
+          {isAdmin ? (
+            <Button variant="primary" icon={<Plus size={16} />} onClick={() => setModal({ mode: "create" })}>
+              Add {singular}
+            </Button>
+          ) : (
+            <Badge tone="blue">View only</Badge>
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
-          <Search size={16} aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 dark:text-white/60" />
+      {/* Toolbar: search grows, filter has a fixed width, same height for both */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative w-full sm:max-w-sm sm:flex-1">
           <input
             aria-label={`Search ${title.toLowerCase()}`}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             placeholder={searchPlaceholder}
-            className={cn(inputBase, "pl-10")}
+            className={cn(inputBase, "h-10 pl-10")}
           />
         </div>
-        <select
-          aria-label="Filter by status"
-          value={status}
-          onChange={(e) => { setStatus(e.target.value as Status | ""); setPage(0); }}
-          className={cn(inputBase, "w-auto")}
-        >
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
-        {toolbarExtra}
+        <div className="w-full sm:w-44">
+          <select
+            aria-label="Filter by status"
+            value={status}
+            onChange={(e) => { setStatus(e.target.value as Status | ""); setPage(0); }}
+            className={cn(inputBase, "h-10")}
+          >
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+        {toolbarExtra && <div className="flex items-center gap-2 sm:ml-auto">{toolbarExtra}</div>}
       </div>
 
       <DataTable
@@ -206,7 +213,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
         onClose={closeModal}
         title={mode === "edit" ? `Edit ${singular}` : `Add ${singular}`}
         description={mode === "edit" ? "Update the details and save your changes." : `Fill in the details to create a new ${singular}.`}
-        size="lg"
+        size={modalSize}
       >
         {modal && (
           <EntityForm<TForm>
