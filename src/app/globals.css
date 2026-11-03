@@ -25,6 +25,11 @@
   --color-pf-gold-60: #f3c370;
   --color-pf-gold-50: #f3c981;
 
+   --color-pf-error: #dc2626;
+  --color-pf-error-bg: #fee2e2;
+  --color-pf-error-border: #fca5a5;
+  --color-pf-error-text: #991b1b;
+
   /* Deep navy used for the motif on blue, and as the dark-mode surface */
   --color-pf-night: #0d1040;
 
