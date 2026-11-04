@@ -40,9 +40,10 @@ export default function DashboardShell({ active, children }: DashboardShellProps
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-[#0d1040] dark:text-white">
-        {/* desktop sidebar */}
-        <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] lg:block">
+      {/* flex row: the sidebar column stretches to the full page height, so it never clips */}
+      <div className="flex min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-[#0d1040] dark:text-white">
+        {/* desktop sidebar (normal flow, not fixed) */}
+        <aside className="hidden w-[264px] shrink-0 lg:flex">
           <SidebarContent active={current} groupId="desktop" />
         </aside>
 
@@ -52,7 +53,7 @@ export default function DashboardShell({ active, children }: DashboardShellProps
             <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
               <motion.div className="absolute inset-0 bg-black/50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setOpen(false)} />
               <motion.aside
-                className="absolute inset-y-0 left-0 w-[280px] max-w-[85%] shadow-2xl"
+                className="absolute inset-y-0 left-0 w-[280px] max-w-[85%] overflow-y-auto shadow-2xl"
                 initial={{ x: "-100%" }}
                 animate={{ x: 0 }}
                 exit={{ x: "-100%" }}
@@ -67,7 +68,7 @@ export default function DashboardShell({ active, children }: DashboardShellProps
           )}
         </AnimatePresence>
 
-        <div className="lg:pl-[264px]">
+        <div className="min-w-0 flex-1">
           <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-5 backdrop-blur transition-colors dark:border-white/10 dark:bg-[#0d1040]/90 sm:px-8 lg:px-10">
             <div className="flex items-center gap-2 lg:hidden">
               <button type="button" aria-label="Open navigation" aria-expanded={open} onClick={() => setOpen(true)} className={iconBtn}>
@@ -96,9 +97,9 @@ export default function DashboardShell({ active, children }: DashboardShellProps
             </div>
           </header>
 
-         <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35, ease: "easeOut" }}>
-  {children}
-</motion.main>
+          <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35, ease: "easeOut" }}>
+            {children}
+          </motion.main>
         </div>
       </div>
     </MotionConfig>

@@ -1,7 +1,6 @@
 import { useAuthStore } from "../auth/auth-store";
 import { LOGIN_PATH } from "../auth/constants";
 
-
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1").replace(/\/$/, "");
 
 export class ApiError extends Error {
@@ -20,9 +19,13 @@ type RequestOptions = {
   json?: unknown;
   /** application/x-www-form-urlencoded body (used by /auth/login) */
   form?: Record<string, string>;
+  /** multipart/form-data body (file uploads). Content-Type is set by the browser. */
+  formData?: FormData;
   /** set false for public endpoints (no Bearer header, no auto-logout on 401) */
   auth?: boolean;
   signal?: AbortSignal;
+  /** how to parse a successful response body (default "json") */
+  responseType?: "json" | "blob";
 };
 
 function buildUrl(path: string, query?: object): string {
@@ -51,10 +54,13 @@ async function toApiError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, res.statusText || "Request failed");
 }
 
-export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", query, json, form, auth = true, signal } = options;
+/** Shared fetch: builds headers/body, sends the Bearer token, handles 401 and non-2xx. */
+async function request(path: string, options: RequestOptions = {}): Promise<Response> {
+  const { method = "GET", query, json, form, formData, auth = true, signal, responseType = "json" } = options;
 
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = {
+    Accept: responseType === "blob" ? "*/*" : "application/json",
+  };
   if (auth) {
     const token = useAuthStore.getState().token;
     if (token) headers.Authorization = `Bearer ${token}`; // <- token sent as Bearer on every call
@@ -64,6 +70,9 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   if (form) {
     headers["Content-Type"] = "application/x-www-form-urlencoded";
     body = new URLSearchParams(form).toString();
+  } else if (formData) {
+    // Do NOT set Content-Type: the browser adds multipart/form-data with the boundary.
+    body = formData;
   } else if (json !== undefined) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(json);
@@ -85,8 +94,26 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     }
   }
   if (!res.ok) throw await toApiError(res);
+  return res;
+}
+
+export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const res = await request(path, options);
   if (res.status === 204) return undefined as T;
+  if (options.responseType === "blob") return (await res.blob()) as T;
   return (await res.json()) as T;
+}
+
+/** Authenticated file download: returns the blob plus the filename from Content-Disposition. */
+export async function apiDownload(
+  path: string,
+  options: Omit<RequestOptions, "responseType"> = {},
+  fallbackName = "download",
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await request(path, { ...options, responseType: "blob" });
+  const filename =
+    /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
+  return { blob: await res.blob(), filename: decodeURIComponent(filename) };
 }
 
 export function errorMessage(error: unknown): string {

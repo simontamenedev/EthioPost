@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { LayoutGroup, motion, type Variants } from "framer-motion";
-import { CircleHelp, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { navSections, type NavKey } from "./dashboard-nav";
 import { Logo } from "../app/features/login/components/brand-logo";
 import { useAuthStore } from "../lib/auth/auth-store";
@@ -22,19 +22,20 @@ type Props = {
 
 /* Post Finance Blue surface, white logo, gold = active state. */
 export function SidebarContent({ active, groupId, onNavigate }: Props) {
-  // inside SidebarContent:
-const user = useAuthStore((s) => s.user);
-const logout = useLogout();
-const displayName = user?.name ?? "Account";
-const initials = displayName.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+  const user = useAuthStore((s) => s.user);
+  const logout = useLogout();
+  const displayName = user?.name ?? "Account";
+  const initials = displayName.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+
   return (
-    <div className="flex h-full flex-col bg-[#2c317b] text-white dark:bg-[#161a5c]">
+    // min-h-screen: fills the viewport at minimum, but grows when the nav gets longer (no inner scroll).
+    <div className="flex min-h-screen flex-col bg-[#2c317b] text-white dark:bg-[#161a5c]">
       <Link href="/" onClick={onNavigate} aria-label="Post Finance home" className={`flex h-[76px] shrink-0 items-center border-b border-white/10 px-6 ${focus}`}>
         <Logo variant="white" priority className="h-11" />
       </Link>
 
       <LayoutGroup id={groupId}>
-        <motion.nav aria-label="Main navigation" variants={list} initial="hidden" animate="show" className="flex-1 space-y-6 overflow-y-auto px-4 py-6">
+        <motion.nav aria-label="Main navigation" variants={list} initial="hidden" animate="show" className="flex-1 space-y-6 px-4 py-6">
           {navSections.map((section) => (
             <div key={section.title} className="mt-4">
               <motion.p variants={row} className="px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-white/65">
@@ -71,22 +72,22 @@ const initials = displayName.split(" ").map((p) => p[0]).slice(0, 2).join("").to
       </LayoutGroup>
 
       <div className="shrink-0 p-4">
-  <button
-    type="button"
-    onClick={() => { onNavigate?.(); logout(); }}
-    aria-label="Log out"
-    className={`group mt-4 flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-white/10 ${focus}`}
-  >
-    <span className="flex size-9 items-center justify-center rounded-full bg-[#f3ad1c] text-xs font-bold text-[#2c317b]">
-      {initials}
-    </span>
-    <span className="min-w-0 flex-1">
-      <span className="block truncate text-xs font-semibold">{displayName}</span>
-      <span className="block truncate text-[11px] capitalize text-white/70">{user?.role ?? ""}</span>
-    </span>
-    <LogOut size={16} className="text-white/70 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-white" />
-  </button>
-</div>
+        <button
+          type="button"
+          onClick={() => { onNavigate?.(); logout(); }}
+          aria-label="Log out"
+          className={`group mt-4 flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-white/10 ${focus}`}
+        >
+          <span className="flex size-9 items-center justify-center rounded-full bg-[#f3ad1c] text-xs font-bold text-[#2c317b]">
+            {initials}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-semibold">{displayName}</span>
+            <span className="block truncate text-[11px] capitalize text-white/70">{user?.role ?? ""}</span>
+          </span>
+          <LogOut size={16} className="text-white/70 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-white" />
+        </button>
+      </div>
     </div>
   );
 }

@@ -3,23 +3,34 @@ import {
   FileSpreadsheet,
   LayoutDashboard,
   MapPinned,
-  ShieldCheck,
+  ReceiptText,
+  Upload,
   UserCog,
+  UserPlus,
   Users,
   type LucideIcon,
 } from "lucide-react";
 
-export type NavKey = "overview" | "reports" | "districts" | "branches" | "agents" | "users" | "roles";
+export type NavKey =
+  | "overview" | "transactions" | "registrations" | "upgrades" | "imports" | "reports"
+  | "districts" | "branches" | "agents" | "users" | "roles";
 
-export type NavItem = { label: string; href: string; key: NavKey; icon: LucideIcon };
+export type NavItem = { label: string; href: string; key: NavKey; icon: LucideIcon; adminOnly?: boolean };
 export type NavSection = { title: string; items: NavItem[] };
 
 /* Edit hrefs here to match your routes. */
 export const navSections: NavSection[] = [
   {
     title: "Workspace",
+    items: [{ label: "Overview", href: "/", key: "overview", icon: LayoutDashboard }],
+  },
+  {
+    title: "Agent performance",
     items: [
-      { label: "Overview", href: "/", key: "overview", icon: LayoutDashboard },
+      { label: "Transactions", href: "/transactions", key: "transactions", icon: ReceiptText },
+      { label: "Registrations", href: "/registrations", key: "registrations", icon: UserPlus },
+      { label: "Upgrades", href: "/upgrades", key: "upgrades", icon: FileSpreadsheet },
+      { label: "Data imports", href: "/imports", key: "imports", icon: Upload, adminOnly: true },
     ],
   },
   {

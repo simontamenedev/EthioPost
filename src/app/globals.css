@@ -25,13 +25,17 @@
   --color-pf-gold-60: #f3c370;
   --color-pf-gold-50: #f3c981;
 
-   --color-pf-error: #dc2626;
+  /* Feedback */
+  --color-pf-error: #dc2626;
   --color-pf-error-bg: #fee2e2;
   --color-pf-error-border: #fca5a5;
   --color-pf-error-text: #991b1b;
 
   /* Deep navy used for the motif on blue, and as the dark-mode surface */
   --color-pf-night: #0d1040;
+  /* Dark-mode raised surfaces: panels / cards, then menus and table headers */
+  --color-pf-night-2: #161a5c;
+  --color-pf-night-3: #1d2170;
 
   --font-sans: "Archivo", "Noto Sans Ethiopic", system-ui, sans-serif;
 }
@@ -40,12 +44,14 @@
   color-scheme: light;
   --background: #ffffff;
   --foreground: #0f172a;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 .dark {
   color-scheme: dark;
   --background: #0d1040;
   --foreground: #ffffff;
+  scrollbar-color: rgb(255 255 255 / 0.28) transparent;
 }
 
 @theme inline {
@@ -58,6 +64,55 @@ body {
   color: var(--foreground);
   /* Archivo for English, Noto Sans Ethiopic picks up Amharic glyphs */
   font-family: var(--font-sans);
+}
+
+/*
+  Base layer: keeps these defaults BELOW Tailwind utilities, so classes like
+  text-red-600 or dark:text-white on a button/input still win.
+*/
+@layer base {
+  /* Controls follow the surrounding text colour, so nothing falls back to black in dark mode */
+  button,
+  input,
+  select,
+  textarea {
+    color: inherit;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: color-mix(in srgb, currentColor 55%, transparent);
+    opacity: 1;
+  }
+
+  /* Native dropdown lists and file buttons follow the theme */
+  select option {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-pf-gold) 45%, transparent);
+    color: inherit;
+  }
+
+  /* Slim scrollbars (WebKit) that match both themes */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background-color: rgb(255 255 255 / 0.28);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 /* Headline: Archivo Black, used sparingly for the big brand statement */
