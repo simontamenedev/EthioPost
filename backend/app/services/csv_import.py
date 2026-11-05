@@ -17,7 +17,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
 import pandas as pd
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.datasets import Dataset
@@ -26,14 +26,18 @@ from app.crud.audit import record_audit, snapshot
 from app.models import (
     Agent,
     AgentTransaction,
+    Branch,
     CustomerRegistration,
     CustomerUpgrade,
+    District,
     ImportBatch,
 )
+from app.services import file_store
 
 MAX_ERRORS = 50
 CHUNK = 1000
 CUSTOMER = "CUSTOMER"
+UNASSIGNED = "Unassigned"  # fallback when a row has no region / organization
 
 
 class CsvFormatError(ValueError):
@@ -254,6 +258,7 @@ def import_csv(
         db.add(batch)
         db.flush()
         db.refresh(batch)
+        file_store.save(batch.id, content) 
         record_audit(db, action=AuditAction.CREATE, obj=batch, actor_id=actor_id, new_values=snapshot(batch))
 
         for i in range(0, len(fresh), CHUNK):
@@ -271,30 +276,114 @@ def import_csv(
         db.commit()
     except Exception:
         db.rollback()
+        if batch is not None and batch.id:          # <-- new
+            file_store.remove(batch.id)
         raise
     db.refresh(batch)
     return batch
 
 
-def relink_agents(db: Session) -> dict[str, int]:
-    """Fill agent_id on imported rows whose agent was added to master data after the upload."""
-    agents = _agent_map(db)
-    linked: dict[str, int] = {}
-    for ds, spec in SPECS.items():
-        model, total = spec.model, 0
-        orphan_codes = db.scalars(
-            select(model.agent_shortcode)
-            .where(model.agent_id.is_(None), model.deleted_at.is_(None))
-            .distinct()
+# --------------------------------------------------------------------------- relink
+def _stage_create(db: Session, model: type, data: dict[str, Any], actor_id: uuid.UUID):
+    """Add + audit a new master-data row without committing (the caller commits once)."""
+    obj = model(**data, created_by=actor_id, updated_by=actor_id)
+    db.add(obj)
+    db.flush()
+    db.refresh(obj)
+    record_audit(db, action=AuditAction.CREATE, obj=obj, actor_id=actor_id, new_values=snapshot(obj))
+    return obj
+
+
+def _orphan_locations(db: Session, known: dict[str, uuid.UUID]) -> dict[str, tuple[str, str]]:
+    """agent_shortcode -> (region, organization) for imported rows whose agent doesn't exist yet.
+    If a code appears under several organizations, the most frequent one wins."""
+    best: dict[str, tuple[int, str, str]] = {}
+    for spec in SPECS.values():
+        m = spec.model
+        rows = db.execute(
+            select(m.agent_shortcode, m.region, m.organization_name, func.count())
+            .where(m.agent_id.is_(None), m.deleted_at.is_(None))
+            .group_by(m.agent_shortcode, m.region, m.organization_name)
         ).all()
-        for code in orphan_codes:
-            if code in agents:
-                res = db.execute(
-                    update(model)
-                    .where(model.agent_shortcode == code, model.agent_id.is_(None))
-                    .values(agent_id=agents[code])
-                )
-                total += res.rowcount or 0
-        linked[ds.value] = total
-    db.commit()
-    return linked
+        for code, region, org, n in rows:
+            if code in known:
+                continue
+            if code not in best or n > best[code][0]:
+                best[code] = (n, region or UNASSIGNED, org or UNASSIGNED)
+    return {code: (region, org) for code, (_, region, org) in best.items()}
+
+
+def relink_agents(db: Session, *, actor_id: uuid.UUID) -> dict[str, dict[str, int]]:
+    """Link imported rows to agents. Agents, branches (organizations) and districts (regions)
+    that don't exist yet are created first. Everything commits together or not at all."""
+    created = {"districts": 0, "branches": 0, "agents": 0}
+    linked: dict[str, int] = {}
+    try:
+        agents = _agent_map(db)
+        orphans = _orphan_locations(db, agents)
+
+        if orphans:
+            districts = {
+                d.name.lower(): d.id
+                for d in db.scalars(select(District).where(District.deleted_at.is_(None)))
+            }
+            branches = {
+                (b.district_id, b.name.lower()): b.id
+                for b in db.scalars(select(Branch).where(Branch.deleted_at.is_(None)))
+            }
+
+            for code, (region, org) in sorted(orphans.items()):
+                district_id = districts.get(region.lower())
+                if district_id is None:
+                    district_id = _stage_create(
+                        db, District,
+                        {"name": region, "description": "Created from imported data"}, actor_id,
+                    ).id
+                    districts[region.lower()] = district_id
+                    created["districts"] += 1
+
+                branch_id = branches.get((district_id, org.lower()))
+                if branch_id is None:
+                    branch_id = _stage_create(
+                        db, Branch,
+                        {"name": org, "district_id": district_id,
+                         "description": "Created from imported data"},
+                        actor_id,
+                    ).id
+                    branches[(district_id, org.lower())] = branch_id
+                    created["branches"] += 1
+
+                agents[code] = _stage_create(
+                    db, Agent,
+                    {
+                        "agent_shortcode": code,
+                        "agent_name": code,  # reports carry no agent name; edit it later
+                        "branch_id": branch_id,
+                        "district_id": district_id,
+                        "remark": "Auto-created from imported data",
+                    },
+                    actor_id,
+                ).id
+                created["agents"] += 1
+
+        for ds, spec in SPECS.items():
+            model, total = spec.model, 0
+            codes = db.scalars(
+                select(model.agent_shortcode)
+                .where(model.agent_id.is_(None), model.deleted_at.is_(None))
+                .distinct()
+            ).all()
+            for code in codes:
+                if code in agents:
+                    res = db.execute(
+                        update(model)
+                        .where(model.agent_shortcode == code, model.agent_id.is_(None))
+                        .values(agent_id=agents[code])
+                    )
+                    total += res.rowcount or 0
+            linked[ds.value] = total
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"linked": linked, "created": created}

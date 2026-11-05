@@ -57,3 +57,24 @@ export type ListParams = {
 
 export type CountStat = { total: number; active: number; inactive: number };
 export type DashboardStats = { agents: CountStat; branches: CountStat; districts: CountStat };
+
+export type UserRef = { id: string; email: string; full_name?: string | null };
+export type AuditStamp = { created_by: UserRef | null; updated_by: UserRef | null };
+
+export type AuditLog = {
+  id: string;
+  action: string; // "create" | "update" | "delete"
+  model_name: string;
+  record_id: string;
+  user_id: string | null;
+  user: UserRef | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+};
+
+export type BranchDetail = Branch & { district: District; agent_count: number; audit?: AuditStamp | null };
+export type DistrictDetail = District & { branch_count: number; agent_count: number; audit?: AuditStamp | null };
+export type AgentDetail = Agent & { branch: Branch; district: District; audit?: AuditStamp | null };

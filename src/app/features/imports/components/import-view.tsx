@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowDown,
@@ -11,7 +12,6 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
-  Eye,
   FileSpreadsheet,
   Folder,
   Link2,
@@ -80,6 +80,12 @@ type Entry = {
 
 type Problem = { title: string; message: string };
 
+/** What POST /imports/relink returns: { linked: {dataset: n}, created: {districts, branches, agents} }. */
+type RelinkResult = {
+  linked?: Record<string, number>;
+  created?: { districts?: number; branches?: number; agents?: number };
+};
+
 /* ───────────────────────────── helpers ───────────────────────────── */
 
 /** Turns raw API/network errors into a clear, professional message. */
@@ -97,6 +103,50 @@ function friendlyError(error: unknown): Problem {
       return { title: "Server error", message: "Something went wrong on our side. Please try again in a few minutes." };
   }
   return { title: "Import failed", message: errorMessage(error) };
+}
+
+/** Builds the "Link agents" toast. Reads the new nested response and the old flat one. */
+function summarizeRelink(raw: unknown): { linkedTotal: number; createdTotal: number; description: string } {
+  const res = (raw ?? {}) as RelinkResult & Record<string, unknown>;
+  const linkedMap = (res.linked ?? res) as Record<string, unknown>;
+  const linked = Object.entries(linkedMap).filter((entry): entry is [string, number] => typeof entry[1] === "number");
+  const linkedTotal = linked.reduce((sum, [, n]) => sum + n, 0);
+
+  const c = res.created ?? {};
+  const noun = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+  const createdParts = [
+    c.agents ? noun(c.agents, "agent", "agents") : null,
+    c.branches ? noun(c.branches, "branch", "branches") : null,
+    c.districts ? noun(c.districts, "district", "districts") : null,
+  ].filter(Boolean) as string[];
+  const createdTotal = (c.agents ?? 0) + (c.branches ?? 0) + (c.districts ?? 0);
+
+  const parts: string[] = [];
+  if (linkedTotal > 0) {
+    const byDataset = linked
+      .filter(([, n]) => n > 0)
+      .map(([key, n]) => `${LABELS[key as DatasetKey] ?? key} ${n.toLocaleString()}`)
+      .join(" · ");
+    parts.push(`Linked ${noun(linkedTotal, "row", "rows")} to agents (${byDataset}).`);
+  }
+  if (createdParts.length) {
+    const list =
+      createdParts.length > 1
+        ? `${createdParts.slice(0, -1).join(", ")} and ${createdParts[createdParts.length - 1]}`
+        : createdParts[0];
+    parts.push(`Created ${list} from the imported data. Review the new agent names in Agents.`);
+  }
+  return { linkedTotal, createdTotal, description: parts.join(" ") };
+}
+
+/** Saves a blob to the user's computer. */
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement("a"), { href: url, download: filename });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 /** "Today, 10:42 AM" · "Yesterday, 4:16 PM" · "May 21, 2025, 2:08 PM" */
@@ -273,209 +323,9 @@ const FILE_COLS: Col[] = [
 
 /* ───────────────────────────── main component ───────────────────────────── */
 
-const VIEW_LIMIT = 500;
-
-const formatSize = (bytes: number) =>
-  bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-
-/** Small RFC-4180 style CSV parser (quotes, escaped quotes, CRLF, comma or semicolon). */
-function parseCsv(raw: string): string[][] {
-  const text = raw.replace(/^\uFEFF/, "");
-  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
-  const sep = (firstLine.match(/;/g)?.length ?? 0) > (firstLine.match(/,/g)?.length ?? 0) ? ";" : ",";
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (quoted) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { cell += '"'; i++; } else quoted = false;
-      } else cell += c;
-    } else if (c === '"') quoted = true;
-    else if (c === sep) { row.push(cell); cell = ""; }
-    else if (c === "\n" || c === "\r") {
-      if (c === "\r" && text[i + 1] === "\n") i++;
-      row.push(cell); cell = ""; rows.push(row); row = [];
-    } else cell += c;
-  }
-  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
-  return rows.filter((r) => r.some((x) => x !== ""));
-}
-
-type ViewerState =
-  | { status: "loading" }
-  | { status: "error"; problem: Problem }
-  | { status: "ready"; text: string; blob: Blob };
-
-/** Read-only preview of an uploaded CSV, with a download button to open it in any editor. */
-function FileViewer({ batch, file, onClose }: { batch: ImportBatch; file: File | undefined; onClose: () => void }) {
-  const [state, setState] = useState<ViewerState>({ status: "loading" });
-  const [mode, setMode] = useState<"table" | "text">("table");
-  const [q, setQ] = useState("");
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        // Files uploaded in this session are cached; otherwise ask the API for the stored copy.
-        const blob: Blob = file ?? (await apiDownload(`/imports/${batch.id}/file`)).blob;
-        const text = await blob.text();
-        if (alive) setState({ status: "ready", text, blob });
-      } catch (error) {
-        if (!alive) return;
-        const missing = error instanceof ApiError && (error.status === 404 || error.status === 405);
-        setState({
-          status: "error",
-          problem: missing
-            ? { title: "File not available", message: "Only files uploaded in this session can be previewed. Upload the file again to view it." }
-            : friendlyError(error),
-        });
-      }
-    })();
-    return () => { alive = false; };
-  }, [batch.id, file]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [onClose]);
-
-  const rows = useMemo(() => (state.status === "ready" ? parseCsv(state.text) : []), [state]);
-  const header = rows[0] ?? [];
-  const body = useMemo(() => rows.slice(1), [rows]);
-  const needle = q.trim().toLowerCase();
-  const filtered = useMemo(() => (needle ? body.filter((r) => r.some((c) => c.toLowerCase().includes(needle))) : body), [body, needle]);
-  const shown = filtered.slice(0, VIEW_LIMIT);
-
-  function download() {
-    if (state.status !== "ready") return;
-    const url = URL.createObjectURL(state.blob);
-    const a = Object.assign(document.createElement("a"), { href: url, download: batch.filename });
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  const toggle = (id: "table" | "text", label: string) => (
-    <button
-      type="button"
-      onClick={() => setMode(id)}
-      aria-pressed={mode === id}
-      className={cn("rounded-md px-3 py-1 text-sm", mode === id ? "bg-white font-semibold text-slate-900 shadow-sm dark:bg-white/20 dark:text-white" : "text-slate-600 hover:text-slate-900 dark:text-white/70 dark:hover:text-white", focusRing)}
-    >
-      {label}
-    </button>
-  );
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Preview of ${batch.filename}`}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="flex h-[88vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl dark:border-white/10 dark:bg-[#161a5c] dark:text-white dark:[color-scheme:dark]">
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3 dark:border-white/10">
-          <FileIcon size={24} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold text-slate-900 dark:text-white">{batch.filename}</p>
-            <p className="truncate text-xs text-slate-500 dark:text-white/60">
-              {state.status === "ready"
-                ? `${body.length.toLocaleString()} rows · ${header.length} columns · ${formatSize(state.blob.size)}`
-                : `${LABELS[batch.dataset]} · ${formatModified(batch.created_at)}`}
-            </p>
-          </div>
-          <div className="inline-flex rounded-lg bg-slate-100 p-0.5 dark:bg-white/10">
-            {toggle("table", "Table")}
-            {toggle("text", "Text")}
-          </div>
-          {mode === "table" && (
-            <div className="flex h-9 w-44 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 dark:border-white/20 dark:bg-white/5 sm:w-56">
-              <Search size={14} className="shrink-0 text-slate-500 dark:text-white/60" />
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                aria-label="Search rows"
-                placeholder="Search rows"
-                className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-500 dark:text-white dark:placeholder:text-white/50"
-              />
-            </div>
-          )}
-          <button type="button" onClick={download} disabled={state.status !== "ready"} title="Download to open in Excel or any editor" className={cmdBtn}>
-            <Download size={16} />
-            <span className="hidden sm:inline">Download</span>
-          </button>
-          <button type="button" aria-label="Close preview" onClick={onClose} className={cn("rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-white/80 dark:hover:bg-white/10", focusRing)}>
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-auto">
-          {state.status === "loading" ? (
-            <div aria-hidden className="animate-pulse space-y-2 p-4">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="h-8 rounded-md bg-slate-100 dark:bg-white/10" />
-              ))}
-            </div>
-          ) : state.status === "error" ? (
-            <div className="flex flex-col items-center gap-2 px-6 py-20 text-center">
-              <AlertCircle size={28} className="text-red-600 dark:text-red-300" />
-              <p className="font-semibold text-slate-900 dark:text-white">{state.problem.title}</p>
-              <p className="max-w-md text-sm text-slate-600 dark:text-white/70">{state.problem.message}</p>
-            </div>
-          ) : mode === "text" ? (
-            <pre className="whitespace-pre p-4 font-mono text-xs leading-relaxed text-slate-800 dark:text-white/90">{state.text.slice(0, 200_000)}</pre>
-          ) : (
-            <table className="min-w-full border-collapse text-sm">
-              <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-[#1d2170]">
-                <tr>
-                  <th className="w-12 border-b border-slate-200 px-3 py-2 text-right text-xs font-normal text-slate-500 dark:border-white/10 dark:text-white/60">#</th>
-                  {header.map((h, i) => (
-                    <th key={i} className="whitespace-nowrap border-b border-l border-slate-200 px-3 py-2 text-left font-semibold text-slate-800 dark:border-white/10 dark:text-white">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((r, ri) => (
-                  <tr key={ri} className="even:bg-slate-50/70 hover:bg-sky-50 dark:even:bg-white/[0.03] dark:hover:bg-white/5">
-                    <td className="px-3 py-1.5 text-right text-xs tabular-nums text-slate-400 dark:text-white/40">{ri + 1}</td>
-                    {header.map((_, ci) => (
-                      <td key={ci} title={r[ci]} className="max-w-[320px] truncate border-l border-slate-100 px-3 py-1.5 text-slate-800 dark:border-white/5 dark:text-white/90">
-                        {r[ci] ?? ""}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {state.status === "ready" && mode === "table" && (
-          <div className="border-t border-slate-200 px-4 py-2 text-xs text-slate-600 dark:border-white/10 dark:text-white/70">
-            Showing {shown.length.toLocaleString()} of {filtered.length.toLocaleString()} rows
-            {filtered.length > VIEW_LIMIT && ". Download the file to see everything"}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function ImportsView() {
   const isAdmin = useIsAdmin();
+  const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const targetRef = useRef<DatasetKey>("transactions");
 
@@ -488,12 +338,11 @@ export function ImportsView() {
   const [dropId, setDropId] = useState<string | null>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; entry: Entry } | null>(null);
 
-  // upload / delete state (same logic as before)
+  // upload / delete state
   const [uploading, setUploading] = useState<string | null>(null);
   const [formError, setFormError] = useState<Problem | null>(null);
   const [toRollback, setToRollback] = useState<ImportBatch | null>(null);
-  const [viewing, setViewing] = useState<ImportBatch | null>(null);
-  const filesRef = useRef(new Map<string, File>()); // uploaded files kept for preview this session
+  const filesRef = useRef(new Map<string, File>()); // uploaded files kept for download this session
 
   const batches = useImports();
   const upload = useUploadCsv();
@@ -592,7 +441,24 @@ export function ImportsView() {
     }
   }
 
-  /* ── delete (roll back) / relink (same logic as before) ── */
+  /* ── download ── */
+  async function downloadBatch(b: ImportBatch) {
+    try {
+      // Files uploaded in this session are cached; otherwise ask the API for the stored copy.
+      const blob: Blob = filesRef.current.get(b.id) ?? (await apiDownload(`/imports/${b.id}/file`)).blob;
+      saveBlob(blob, b.filename);
+      toast.success("Download started", { description: b.filename });
+    } catch (error) {
+      const missing = error instanceof ApiError && (error.status === 404 || error.status === 405);
+      toast.error("Couldn't download the file", {
+       description: missing
+  ? "The original file isn't stored on the server (it was uploaded before file storage was added). Upload it again to get a copy."
+  : friendlyError(error).message,
+      });
+    }
+  }
+
+  /* ── delete (roll back) / relink ── */
   async function confirmRollback() {
     if (!toRollback) return;
     try {
@@ -609,9 +475,18 @@ export function ImportsView() {
   async function handleRelink() {
     try {
       const res = await relink.mutateAsync();
-      const n = Object.values(res).reduce((a, b) => a + b, 0);
-      if (n) toast.success("Agents linked", { description: `${n.toLocaleString()} rows were linked to agents.` });
-      else toast.info("Nothing to link", { description: "All imported rows are already linked to agents." });
+      const { linkedTotal, createdTotal, description } = summarizeRelink(res);
+
+      if (createdTotal > 0) {
+        // new districts / branches / agents now exist: refresh those screens
+        for (const key of ["districts", "branches", "agents"]) void queryClient.invalidateQueries({ queryKey: [key] });
+      }
+
+      if (linkedTotal === 0 && createdTotal === 0) {
+        toast.info("Nothing to link", { description: "Every imported row is already linked to an agent, and no new agents were needed." });
+      } else {
+        toast.success("Agents linked", { description, duration: 8000 });
+      }
     } catch (error) {
       toast.error("Couldn't link agents", { description: friendlyError(error).message });
     }
@@ -626,7 +501,7 @@ export function ImportsView() {
     } else if (ev.key === "Enter" && selected?.kind === "folder") {
       openDataset(selected.dataset);
     } else if (ev.key === "Enter" && selected?.batch) {
-      setViewing(selected.batch);
+      void downloadBatch(selected.batch);
     } else if ((ev.key === "Backspace" || (ev.altKey && ev.key === "ArrowUp")) && openFolder) {
       ev.preventDefault();
       goRoot();
@@ -659,7 +534,7 @@ export function ImportsView() {
       "aria-selected": sel === e.id,
       tabIndex: 0,
       onClick: () => setSel(e.id),
-      onDoubleClick: () => { if (e.kind === "folder") openDataset(e.dataset); else if (e.batch) setViewing(e.batch); },
+      onDoubleClick: () => { if (e.kind === "folder") openDataset(e.dataset); else if (e.batch) void downloadBatch(e.batch); },
       onContextMenu: (ev: React.MouseEvent) => {
         ev.preventDefault();
         setSel(e.id);
@@ -829,7 +704,7 @@ export function ImportsView() {
           {last.unmatched_shortcodes && last.unmatched_shortcodes.length > 0 && (
             <div className="mt-4">
               <p className="text-sm text-slate-700 dark:text-white/80">
-                These agents are missing from Agents master data. Add them, then select “Link agents”.
+                These agents are not in Agents master data yet. Select “Link agents” to create them (with their district and branch) and link the imported rows, or add them yourself first.
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {last.unmatched_shortcodes.map((code) => (
@@ -926,9 +801,9 @@ export function ImportsView() {
             </Dropdown>
           )}
 
-          <button type="button" aria-label="Open" title="View file" disabled={!selected?.batch} onClick={() => selected?.batch && setViewing(selected.batch)} className={cmdBtn}>
-            <Eye size={16} />
-            <span className="hidden sm:inline">Open</span>
+          <button type="button" aria-label="Download" title="Download file" disabled={!selected?.batch} onClick={() => selected?.batch && void downloadBatch(selected.batch)} className={cmdBtn}>
+            <Download size={16} />
+            <span className="hidden sm:inline">Download</span>
           </button>
 
           <button type="button" aria-label="Delete" title="Delete" disabled={!selected?.batch} onClick={() => selected?.batch && setToRollback(selected.batch)} className={cmdBtn}>
@@ -936,7 +811,7 @@ export function ImportsView() {
             <span className="hidden sm:inline">Delete</span>
           </button>
 
-          <button type="button" aria-label="Link agents" title="Link new agents to imported data" disabled={relink.isPending} onClick={() => void handleRelink()} className={cmdBtn}>
+          <button type="button" aria-label="Link agents" title="Create missing agents, branches and districts, then link imported rows to agents" disabled={relink.isPending} onClick={() => void handleRelink()} className={cmdBtn}>
             <Link2 size={16} />
             <span className="hidden md:inline">{relink.isPending ? "Linking…" : "Link agents"}</span>
           </button>
@@ -1048,7 +923,7 @@ export function ImportsView() {
             </>
           ) : (
             <>
-              <MenuItem onClick={() => { if (ctx.entry.batch) setViewing(ctx.entry.batch); setCtx(null); }}>Open</MenuItem>
+              <MenuItem onClick={() => { if (ctx.entry.batch) void downloadBatch(ctx.entry.batch); setCtx(null); }}>Download</MenuItem>
               <MenuItem danger onClick={() => { if (ctx.entry.batch) setToRollback(ctx.entry.batch); setCtx(null); }}>
                 Delete
               </MenuItem>
@@ -1065,8 +940,6 @@ export function ImportsView() {
         onConfirm={() => void confirmRollback()}
         onCancel={() => setToRollback(null)}
       />
-
-      {viewing && <FileViewer batch={viewing} file={filesRef.current.get(viewing.id)} onClose={() => setViewing(null)} />}
     </div>
   );
 }

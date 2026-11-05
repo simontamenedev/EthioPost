@@ -3,6 +3,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Query
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import AdminUser, DbSession
 from app.core.enums import AuditAction
@@ -11,6 +12,9 @@ from app.models import AuditLog
 from app.schemas.audit_log import AuditLogRead
 
 router = APIRouter(prefix="/audit-logs", tags=["audit-logs"])
+
+# Eager-load the acting user in one extra query instead of one lazy load per log row.
+_WITH_USER = (selectinload(AuditLog.user),)
 
 
 def _model_cond(model_name: str):
@@ -44,7 +48,9 @@ def list_audit_logs(
         conditions.append(AuditLog.created_at >= date_from)
     if date_to:
         conditions.append(AuditLog.created_at <= date_to)
-    return audit_log_crud.get_multi(db, *conditions, skip=skip, limit=limit)
+    return audit_log_crud.get_multi(
+        db, *conditions, skip=skip, limit=limit, options=_WITH_USER
+    )
 
 
 @router.get("/{model_name}", response_model=list[AuditLogRead])
@@ -56,7 +62,9 @@ def list_audit_logs_by_model(
     limit: int = Query(50, ge=1, le=200),
 ) -> list[AuditLog]:
     """Audit trail for every record of one model, e.g. /audit-logs/Agent."""
-    return audit_log_crud.get_multi(db, _model_cond(model_name), skip=skip, limit=limit)
+    return audit_log_crud.get_multi(
+        db, _model_cond(model_name), skip=skip, limit=limit, options=_WITH_USER
+    )
 
 
 @router.get("/{model_name}/{record_id}", response_model=list[AuditLogRead])
@@ -75,4 +83,5 @@ def list_audit_logs_by_record(
         AuditLog.record_id == record_id,
         skip=skip,
         limit=limit,
+        options=_WITH_USER,
     )

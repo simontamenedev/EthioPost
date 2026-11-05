@@ -4,7 +4,10 @@ from pydantic import BaseModel, Field
 
 from app.core.enums import Status
 from app.schemas.base import AuditRead
-
+# app/schemas/agent.py
+from app.schemas.audit import AuditStamp
+from app.schemas.branch import BranchRead
+from app.schemas.district import DistrictRead
 
 class AgentCreate(BaseModel):
     parent_shortcode: str | None = Field(default=None, max_length=50)
@@ -36,3 +39,8 @@ class AgentRead(AuditRead):
     remark: str | None
     branch_id: uuid.UUID
     district_id: uuid.UUID
+
+class AgentDetail(AgentRead):
+    branch: BranchRead
+    district: DistrictRead
+    audit: AuditStamp | None = None

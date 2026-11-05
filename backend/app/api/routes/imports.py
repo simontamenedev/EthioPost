@@ -12,7 +12,8 @@ from app.models import ImportBatch
 from app.schemas.agent_data import ImportBatchRead
 from app.services import csv_import
 from app.services.analytics import SPECS
-
+from fastapi.responses import FileResponse
+from app.services import file_store
 router = APIRouter(prefix="/imports", tags=["imports"])
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -29,6 +30,17 @@ def list_imports(
     conditions = [ImportBatch.dataset == dataset] if dataset else []
     return import_batch_crud.get_multi(db, *conditions, skip=skip, limit=limit)
 
+@router.get("/{batch_id}/file")
+def download_import(batch_id: uuid.UUID, db: DbSession, _: AdminUser) -> FileResponse:
+    """The original CSV exactly as it was uploaded."""
+    batch = get_or_404(import_batch_crud, db, batch_id, "Import")
+    path = file_store.path_for(batch.id)
+    if not path.is_file():
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "The original file was not stored (it was uploaded before file storage was added). Upload it again.",
+        )
+    return FileResponse(path, media_type="text/csv", filename=batch.filename)
 
 @router.post("", response_model=ImportBatchRead, status_code=status.HTTP_201_CREATED)
 async def upload_csv(
@@ -53,9 +65,9 @@ async def upload_csv(
 
 
 @router.post("/relink")
-def relink_agents(db: DbSession, _: AdminUser) -> dict[str, int]:
-    """After adding agents to master data, attach them to already-imported rows."""
-    return csv_import.relink_agents(db)
+def relink_agents(db: DbSession, admin: AdminUser) -> dict[str, dict[str, int]]:
+    """Attach imported rows to agents, creating missing agents, branches and districts first."""
+    return csv_import.relink_agents(db, actor_id=admin.id)
 
 
 @router.delete("/{batch_id}", status_code=status.HTTP_204_NO_CONTENT)

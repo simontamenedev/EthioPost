@@ -11,6 +11,7 @@ import { FieldConfig } from "../../../../components/ui/entity-form";
 import { StatusBadge } from "../../../../components/ui/badge";
 import { STATUS_OPTIONS } from "../../../../lib/options";
 import { ResourceManager } from "../../../../components/ui/resource-manager";
+import { AgentDetailPanel } from "./agent-detail";
 
 const toPayload = (v: AgentFormValues): AgentPayload => ({
   parent_shortcode: v.parent_shortcode || null,
@@ -103,7 +104,9 @@ export function AgentsView() {
       })}
       toCreatePayload={toPayload}
       toUpdatePayload={toPayload}
-      rowLabel={(a) => a.agent_name}
+            rowLabel={(a) => a.agent_name}
+      renderDetail={(row, close) => <AgentDetailPanel key={row.id} id={row.id} onClose={close} />}
+
     />
   );
 }

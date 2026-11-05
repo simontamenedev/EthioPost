@@ -12,6 +12,7 @@ import { formatDate } from "../../../../lib/utils";
 import { FieldConfig } from "../../../../components/ui/entity-form";
 import { STATUS_OPTIONS } from "../../../../lib/options";
 import { ResourceManager } from "../../../../components/ui/resource-manager";
+import { BranchDetailPanel } from "./branch-detail";
 
 const toPayload = (v: BranchFormValues): BranchPayload => ({
   name: v.name,
@@ -74,6 +75,7 @@ export function BranchesView() {
       toUpdatePayload={toPayload}
       rowLabel={(b) => b.name}
       modalSize="md"
+      renderDetail={(row, close) => <BranchDetailPanel key={row.id} id={row.id} onClose={close} />}
 
     />
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import type { DefaultValues, FieldValues } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
@@ -56,6 +56,8 @@ type ResourceManagerProps<TRow extends { id: string }, TForm extends FieldValues
   toolbarExtra?: ReactNode;
   /** width of the add/edit modal */
   modalSize?: "sm" | "md" | "lg";
+  /** When provided, a "View" action appears and the detail slides in beside the table. */
+  renderDetail?: (row: TRow, close: () => void) => ReactNode;
 };
 
 type ModalState<TRow> = { mode: "create" } | { mode: "edit"; row: TRow } | null;
@@ -64,7 +66,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
   title, description, singular, searchPlaceholder = "Search…",
   columns, useList, createMutation, updateMutation, deleteMutation,
   createSchema, updateSchema, fields, emptyValues, toFormValues, toCreatePayload, toUpdatePayload,
-  rowLabel, canDeleteRow, toolbarExtra, modalSize = "md",
+  rowLabel, canDeleteRow, toolbarExtra, modalSize = "md", renderDetail,
 }: ResourceManagerProps<TRow, TForm, TCreate, TUpdate>) {
   const isAdmin = useIsAdmin();
 
@@ -77,6 +79,11 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
   const [serverError, setServerError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<TRow | null>(null);
 
+  // `viewing` keeps the row so the panel content survives the closing animation;
+  // `detailOpen` drives the animation itself.
+  const [viewing, setViewing] = useState<TRow | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+
   // Ask for one extra row to know whether a next page exists.
   const query = useList({ skip: page * PAGE_SIZE, limit: PAGE_SIZE + 1, q: q || undefined, status: status || undefined });
   const rows = query.data?.slice(0, PAGE_SIZE);
@@ -86,6 +93,12 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
     setModal(null);
     setServerError(null);
   }, []);
+
+  const openDetail = useCallback((row: TRow) => {
+    setViewing(row);
+    setDetailOpen(true);
+  }, []);
+  const closeDetail = useCallback(() => setDetailOpen(false), []);
 
   async function handleSubmit(values: TForm) {
     setServerError(null);
@@ -108,6 +121,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
     try {
       await deleteMutation.mutateAsync(toDelete.id);
       toast.success(`${capitalize(singular)} deleted`);
+      if (viewing?.id === toDelete.id) setDetailOpen(false);
       // deleted the only row on this page → step back one page
       if (page > 0 && rows?.length === 1) setPage(page - 1);
       setToDelete(null);
@@ -121,8 +135,11 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
   const visibleFields = fields.filter((f) => !f.modes || f.modes.includes(mode));
   const schema = mode === "edit" ? (updateSchema ?? createSchema) : createSchema;
 
+  const showActions = isAdmin || !!renderDetail;
+  const isViewing = (row: TRow) => detailOpen && viewing?.id === row.id;
+
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5 px-5 py-8 sm:px-8 lg:px-10">
+    <div className="mx-auto w-full max-w-[90rem] space-y-5 px-5 py-8 sm:px-8 lg:px-10">
       {/* Page header: title + description on the left, primary action on the right */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
@@ -143,6 +160,11 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
       {/* Toolbar: search grows, filter has a fixed width, same height for both */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative w-full sm:max-w-sm sm:flex-1">
+          <Search
+            size={16}
+            aria-hidden
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-white/40"
+          />
           <input
             aria-label={`Search ${title.toLowerCase()}`}
             value={search}
@@ -166,47 +188,90 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
         {toolbarExtra && <div className="flex items-center gap-2 sm:ml-auto">{toolbarExtra}</div>}
       </div>
 
-      <DataTable
-        columns={columns}
-        rows={rows}
-        getRowId={(r) => r.id}
-        isLoading={query.isLoading}
-        isError={query.isError}
-        errorMessage={query.error?.message}
-        onRetry={() => void query.refetch()}
-        emptyTitle={q || status ? "No matches" : `No ${title.toLowerCase()} yet`}
-        emptyHint={q || status ? "Try a different search or filter." : isAdmin ? `Use “Add ${singular}” to create the first one.` : undefined}
-        page={page}
-        pageSize={PAGE_SIZE}
-        hasNext={hasNext}
-        onPageChange={setPage}
-        renderActions={
-          isAdmin
-            ? (row) => (
-                <div className="flex justify-end gap-1">
-                  <button
-                    type="button"
-                    aria-label={`Edit ${rowLabel(row)}`}
-                    onClick={() => setModal({ mode: "edit", row })}
-                    className={cn("rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 dark:text-white/75 dark:hover:bg-white/10", focusRing)}
-                  >
-                    <Pencil size={16} />
-                  </button>
-                  {(canDeleteRow?.(row) ?? true) && (
-                    <button
-                      type="button"
-                      aria-label={`Delete ${rowLabel(row)}`}
-                      onClick={() => setToDelete(row)}
-                      className={cn("rounded-lg p-2 text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10", focusRing)}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </div>
-              )
-            : undefined
-        }
-      />
+      {/* Table on the left; the detail panel slides in on the right and pushes the table narrower.
+          On small screens it expands below the table instead. */}
+      <div className="flex flex-col lg:flex-row lg:items-start">
+        <div className="min-w-0 flex-1">
+          <DataTable
+            columns={columns}
+            rows={rows}
+            getRowId={(r) => r.id}
+            isLoading={query.isLoading}
+            isError={query.isError}
+            errorMessage={query.error?.message}
+            onRetry={() => void query.refetch()}
+            emptyTitle={q || status ? "No matches" : `No ${title.toLowerCase()} yet`}
+            emptyHint={q || status ? "Try a different search or filter." : isAdmin ? `Use “Add ${singular}” to create the first one.` : undefined}
+            page={page}
+            pageSize={PAGE_SIZE}
+            hasNext={hasNext}
+            onPageChange={setPage}
+            renderActions={
+              showActions
+                ? (row) => (
+                    <div className="flex justify-end gap-1">
+                      {renderDetail && (
+                        <button
+                          type="button"
+                          aria-label={`View ${rowLabel(row)}`}
+                          aria-pressed={isViewing(row)}
+                          onClick={() => openDetail(row)}
+                          className={cn(
+                            "rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 dark:text-white/75 dark:hover:bg-white/10",
+                            isViewing(row) && "bg-slate-100 dark:bg-white/10",
+                            focusRing,
+                          )}
+                        >
+                          <Eye size={16} />
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label={`Edit ${rowLabel(row)}`}
+                            onClick={() => setModal({ mode: "edit", row })}
+                            className={cn("rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 dark:text-white/75 dark:hover:bg-white/10", focusRing)}
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          {(canDeleteRow?.(row) ?? true) && (
+                            <button
+                              type="button"
+                              aria-label={`Delete ${rowLabel(row)}`}
+                              onClick={() => setToDelete(row)}
+                              className={cn("rounded-lg p-2 text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10", focusRing)}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )
+                : undefined
+            }
+          />
+        </div>
+
+        {renderDetail && (
+          <div
+            aria-hidden={!detailOpen}
+            // Once the close transition finishes, drop the row so the panel unmounts.
+            onTransitionEnd={(e) => {
+              if (e.target === e.currentTarget && !detailOpen) setViewing(null);
+            }}
+            className={cn(
+              "shrink-0 overflow-clip transition-[width,max-height,margin,opacity,visibility] duration-300 ease-in-out motion-reduce:transition-none lg:self-stretch",
+              detailOpen
+                ? "visible mt-5 max-h-[250vh] opacity-100 lg:ml-5 lg:mt-0 lg:max-h-none lg:w-[26rem]"
+                : "invisible mt-0 max-h-0 opacity-0 lg:ml-0 lg:max-h-none lg:w-0",
+            )}
+          >
+            {viewing && renderDetail(viewing, closeDetail)}
+          </div>
+        )}
+      </div>
 
       <Modal
         open={modal !== null}

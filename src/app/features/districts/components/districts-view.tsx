@@ -9,6 +9,7 @@ import { STATUS_OPTIONS } from "../../../../lib/options";
 import { formatDate } from "../../../../lib/utils";
 import { useCreateDistrict, useDeleteDistrict, useDistricts, useUpdateDistrict } from "../hooks";
 import { districtSchema, type DistrictFormValues } from "../schema";
+import { DistrictDetailPanel } from "./district-detail";
 
 const columns: Column<District>[] = [
   {
@@ -59,6 +60,7 @@ export function DistrictsView() {
       toUpdatePayload={toPayload}
       rowLabel={(d) => d.name}
       modalSize="md"
+            renderDetail={(row, close) => <DistrictDetailPanel key={row.id} id={row.id} onClose={close} />}
     />
   );
 }

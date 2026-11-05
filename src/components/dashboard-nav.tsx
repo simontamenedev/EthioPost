@@ -1,22 +1,41 @@
 import {
   Building2,
   FileSpreadsheet,
+  Folder,
   LayoutDashboard,
   MapPinned,
   ReceiptText,
-  Upload,
   UserCog,
   UserPlus,
   Users,
   type LucideIcon,
+  type LucideProps,
 } from "lucide-react";
 
 export type NavKey =
   | "overview" | "transactions" | "registrations" | "upgrades" | "imports" | "reports"
   | "districts" | "branches" | "agents" | "users" | "roles";
 
-export type NavItem = { label: string; href: string; key: NavKey; icon: LucideIcon; adminOnly?: boolean };
+export type NavItem = {
+  label: string;
+  href: string;
+  key: NavKey;
+  icon: LucideIcon;
+  adminOnly?: boolean;
+  /** Extra classes for icons that carry their own colour (e.g. the yellow Files folder). */
+  iconClassName?: string;
+};
 export type NavSection = { title: string; items: NavItem[] };
+
+/** Yellow filled folder used for "Files". Accepts the same props as any Lucide icon. */
+const FolderIcon = (({ size = 18, className, ...props }: LucideProps) => (
+  <Folder
+    size={size}
+    strokeWidth={1.4}
+    className={`shrink-0 fill-[#f3ad1c] text-[#f3ad1c] ${className ?? ""}`}
+    {...props}
+  />
+)) as LucideIcon;
 
 /* Edit hrefs here to match your routes. */
 export const navSections: NavSection[] = [
@@ -30,7 +49,7 @@ export const navSections: NavSection[] = [
       { label: "Transactions", href: "/transactions", key: "transactions", icon: ReceiptText },
       { label: "Registrations", href: "/registrations", key: "registrations", icon: UserPlus },
       { label: "Upgrades", href: "/upgrades", key: "upgrades", icon: FileSpreadsheet },
-      { label: "Data imports", href: "/imports", key: "imports", icon: Upload, adminOnly: true },
+      { label: "Files", href: "/imports", key: "imports", icon: FolderIcon, adminOnly: true },
     ],
   },
   {

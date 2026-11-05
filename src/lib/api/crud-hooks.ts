@@ -5,12 +5,16 @@ import type { ListParams } from "./types";
 /**
  * Builds the full set of TanStack Query hooks for one REST resource.
  * `/{resource}` GET (list) · GET /{id} · POST · PATCH /{id} · DELETE /{id}
+ *
+ * TDetail is what GET /{id} returns (defaults to the list row type), so a
+ * resource can expose a richer detail shape than its list items.
  */
 export function createCrudHooks<
   TEntity extends { id: string },
   TCreate,
   TUpdate,
   TFilters extends object = Record<never, never>,
+  TDetail extends TEntity = TEntity,
 >(resource: string) {
   const keys = {
     all: [resource] as const,
@@ -29,9 +33,9 @@ export function createCrudHooks<
   }
 
   function useOne(id: string | undefined) {
-    return useQuery<TEntity, ApiError>({
+    return useQuery<TDetail, ApiError>({
       queryKey: keys.detail(id ?? ""),
-      queryFn: ({ signal }) => api<TEntity>(`/${resource}/${id}`, { signal }),
+      queryFn: ({ signal }) => api<TDetail>(`/${resource}/${id}`, { signal }),
       enabled: Boolean(id),
     });
   }
@@ -48,7 +52,10 @@ export function createCrudHooks<
     const queryClient = useQueryClient();
     return useMutation<TEntity, ApiError, { id: string; data: TUpdate }>({
       mutationFn: ({ id, data }) => api<TEntity>(`/${resource}/${id}`, { method: "PATCH", json: data }),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.all }),
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
+        return queryClient.invalidateQueries({ queryKey: keys.all });
+      },
     });
   }
 
@@ -56,7 +63,10 @@ export function createCrudHooks<
     const queryClient = useQueryClient();
     return useMutation<void, ApiError, string>({
       mutationFn: (id) => api<void>(`/${resource}/${id}`, { method: "DELETE" }),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.all }),
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
+        return queryClient.invalidateQueries({ queryKey: keys.all });
+      },
     });
   }
 

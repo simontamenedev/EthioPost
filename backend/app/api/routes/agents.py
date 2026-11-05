@@ -9,6 +9,8 @@ from app.core.enums import Status
 from app.crud import agent_crud, branch_crud, district_crud
 from app.models import Agent
 from app.schemas.agent import AgentCreate, AgentRead, AgentUpdate
+from app.api.audit import build_stamp, is_admin
+from app.schemas.agent import AgentCreate, AgentDetail, AgentRead, AgentUpdate
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -48,10 +50,12 @@ def list_agents(
     return agent_crud.get_multi(db, *conditions, skip=skip, limit=limit)
 
 
-@router.get("/{agent_id}", response_model=AgentRead)
-def get_agent(agent_id: uuid.UUID, db: DbSession, _: CurrentUser) -> Agent:
-    return get_or_404(agent_crud, db, agent_id, "Agent")
-
+@router.get("/{agent_id}", response_model=AgentDetail)
+def get_agent(agent_id: uuid.UUID, db: DbSession, user: CurrentUser) -> AgentDetail:
+    agent = get_or_404(agent_crud, db, agent_id, "Agent")
+    return AgentDetail.model_validate(agent).model_copy(
+        update={"audit": build_stamp(db, agent) if is_admin(user) else None}
+    )
 
 @router.post("", response_model=AgentRead, status_code=status.HTTP_201_CREATED)
 def create_agent(payload: AgentCreate, db: DbSession, admin: AdminUser) -> Agent:

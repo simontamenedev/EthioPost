@@ -2,12 +2,13 @@ import uuid
 
 from fastapi import APIRouter, Query, status
 
+from app.api.audit import build_stamp, is_admin
 from app.api.deps import AdminUser, CurrentUser, DbSession
 from app.api.utils import conflict, get_or_404
 from app.core.enums import Status
 from app.crud import agent_crud, branch_crud, district_crud
 from app.models import Agent, Branch
-from app.schemas.branch import BranchCreate, BranchRead, BranchUpdate
+from app.schemas.branch import BranchCreate, BranchDetail, BranchRead, BranchUpdate
 
 router = APIRouter(prefix="/branches", tags=["branches"])
 
@@ -32,9 +33,15 @@ def list_branches(
     return branch_crud.get_multi(db, *conditions, skip=skip, limit=limit)
 
 
-@router.get("/{branch_id}", response_model=BranchRead)
-def get_branch(branch_id: uuid.UUID, db: DbSession, _: CurrentUser) -> Branch:
-    return get_or_404(branch_crud, db, branch_id, "Branch")
+@router.get("/{branch_id}", response_model=BranchDetail)
+def get_branch(branch_id: uuid.UUID, db: DbSession, user: CurrentUser) -> BranchDetail:
+    branch = get_or_404(branch_crud, db, branch_id, "Branch")
+    return BranchDetail.model_validate(branch).model_copy(
+        update={
+            "agent_count": agent_crud.count(db, Agent.branch_id == branch_id),
+            "audit": build_stamp(db, branch) if is_admin(user) else None,
+        }
+    )
 
 
 @router.post("", response_model=BranchRead, status_code=status.HTTP_201_CREATED)
