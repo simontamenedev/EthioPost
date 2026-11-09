@@ -2,8 +2,8 @@ import { TransactionsView } from "../../features/transactions/components/Transac
 
 export default function ImportsPage() {
   return (
-    <div className="space-y-4 p-6">
+    <>
       <TransactionsView/>
-    </div>
+    </>
   );
 }

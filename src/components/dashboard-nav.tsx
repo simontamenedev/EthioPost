@@ -4,6 +4,7 @@ import {
   Folder,
   LayoutDashboard,
   MapPinned,
+  Percent,
   ReceiptText,
   UserCog,
   UserPlus,
@@ -14,7 +15,7 @@ import {
 
 export type NavKey =
   | "overview" | "transactions" | "registrations" | "upgrades" | "imports" | "reports"
-  | "districts" | "branches" | "agents" | "users" | "roles";
+  | "districts" | "branches" | "agents" | "commission-rates" | "users" | "roles";
 
 export type NavItem = {
   label: string;
@@ -58,6 +59,7 @@ export const navSections: NavSection[] = [
       { label: "Districts", href: "/districts", key: "districts", icon: MapPinned },
       { label: "Branches", href: "/branches", key: "branches", icon: Building2 },
       { label: "Agents", href: "/agents", key: "agents", icon: Users },
+      { label: "Commission rates", href: "/commission-rates", key: "commission-rates", icon: Percent },
     ],
   },
   {

@@ -44,6 +44,10 @@ class AgentTransaction(AgentFactMixin, BaseEntity):
     txn_count: Mapped[int] = mapped_column(Integer)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     failure_reason: Mapped[str | None] = mapped_column(String(255))
+        # Snapshot taken at import time. Never recomputed when the master rate changes.
+    commission_rate_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("commission_rates.id"), index=True)
+    commission_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))   # percent used
+    commission_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))  # total_amount * rate / 100
 
 
 class CustomerRegistration(AgentFactMixin, BaseEntity):

@@ -44,3 +44,4 @@ class AgentDetail(AgentRead):
     branch: BranchRead
     district: DistrictRead
     audit: AuditStamp | None = None
+    

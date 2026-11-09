@@ -78,3 +78,21 @@ export type AuditLog = {
 export type BranchDetail = Branch & { district: District; agent_count: number; audit?: AuditStamp | null };
 export type DistrictDetail = District & { branch_count: number; agent_count: number; audit?: AuditStamp | null };
 export type AgentDetail = Agent & { branch: Branch; district: District; audit?: AuditStamp | null };
+
+export type CommissionRate = {
+  id: string;
+  service_name: string;
+  rate: string | number; // percent; the API serialises Decimal as a string
+  service_types: string[] | null;
+  remark: string | null;
+  status: Status;
+  created_at: string;
+  updated_at: string;
+};
+export type CommissionRatePayload = {
+  service_name: string;
+  rate: number;
+  service_types: string[] | null;
+  remark: string | null;
+  status: Status;
+};

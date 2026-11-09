@@ -25,6 +25,8 @@ export type Transaction = {
   region: string | null; import_batch_id: string; txn_date: string; service_type: string;
   channel: string; txn_status: string; debit_shortcode: string; credit_shortcode: string;
   txn_count: number; total_amount: string; failure_reason: string | null;
+  commission_rate: string | number | null;
+  commission_amount: string | number | null;
 };
 export type Registration = {
   id: string; agent_id: string | null; agent_shortcode: string; organization_name: string;

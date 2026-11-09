@@ -43,9 +43,9 @@ export default function DashboardShell({ active, children }: DashboardShellProps
       {/* flex row: the sidebar column stretches to the full page height, so it never clips */}
       <div className="flex min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-[#0d1040] dark:text-white">
         {/* desktop sidebar (normal flow, not fixed) */}
-        <aside className="hidden w-[264px] shrink-0 lg:flex">
-          <SidebarContent active={current} groupId="desktop" />
-        </aside>
+        <aside className="hidden w-[264px] shrink-0 lg:flex [&>*]:w-full">
+  <SidebarContent active={current} groupId="desktop" />
+</aside>
 
         {/* mobile drawer */}
         <AnimatePresence>

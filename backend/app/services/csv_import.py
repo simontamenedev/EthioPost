@@ -33,6 +33,7 @@ from app.models import (
     ImportBatch,
 )
 from app.services import file_store
+from app.services.commission import apply_commission, rate_lookup
 
 MAX_ERRORS = 50
 CHUNK = 1000
@@ -233,11 +234,18 @@ def import_csv(
         )
     fresh = [v for v in parsed if v["row_hash"] not in existing]
 
+    # Snapshot the commission rate in force right now. Runs after row_hash is computed,
+    # so a rate change never alters row identity.
+    if dataset == Dataset.TRANSACTIONS:
+        apply_commission(fresh, rate_lookup(db))
+
     agents = _agent_map(db)
     unmatched_codes = sorted({v["agent_shortcode"] for v in fresh if v["agent_shortcode"] not in agents})
     unmatched_rows = sum(1 for v in fresh if v["agent_shortcode"] not in agents)
     dates = [v[spec.date_field] for v in parsed]
 
+    batch: ImportBatch | None = None
+    batch_id: uuid.UUID | None = None
     try:
         batch = ImportBatch(
             dataset=dataset,
@@ -258,7 +266,8 @@ def import_csv(
         db.add(batch)
         db.flush()
         db.refresh(batch)
-        file_store.save(batch.id, content) 
+        batch_id = batch.id  # keep a plain copy: the ORM object is unusable after rollback
+        file_store.save(batch_id, content)
         record_audit(db, action=AuditAction.CREATE, obj=batch, actor_id=actor_id, new_values=snapshot(batch))
 
         for i in range(0, len(fresh), CHUNK):
@@ -266,7 +275,7 @@ def import_csv(
                 model(
                     **v,
                     agent_id=agents.get(v["agent_shortcode"]),
-                    import_batch_id=batch.id,
+                    import_batch_id=batch_id,
                     created_by=actor_id,
                     updated_by=actor_id,
                 )
@@ -276,8 +285,8 @@ def import_csv(
         db.commit()
     except Exception:
         db.rollback()
-        if batch is not None and batch.id:          # <-- new
-            file_store.remove(batch.id)
+        if batch_id:
+            file_store.remove(batch_id)  # don't leave an orphan file for a batch that never committed
         raise
     db.refresh(batch)
     return batch

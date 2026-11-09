@@ -25,6 +25,8 @@ export function TransactionsView() {
       { key: "count", header: "Txns", cell: (t) => formatInt(t.txn_count) },
       { key: "amount", header: "Amount (ETB)", cell: (t) => formatBirr(t.total_amount) },
       { key: "status", header: "Status", cell: (t) => t.txn_status },
+      { key: "rate", header: "Rate", cell: (t) => (t.commission_rate == null ? "—" : `${Number(t.commission_rate)}%`) },
+{ key: "commission", header: "Commission (ETB)", cell: (t) => (t.commission_amount == null ? "—" : formatBirr(t.commission_amount)) },
     ],
     [],
   );

@@ -1,7 +1,8 @@
 from app.crud.base import CRUDBase
-from app.models import Agent, AuditLog, Branch, District, User
+from app.models import Agent, AuditLog, Branch, District,CommissionRate, User
 from app.models import ImportBatch
 
+commission_rate_crud = CRUDBase(CommissionRate)
 import_batch_crud = CRUDBase(ImportBatch)
 user_crud = CRUDBase(User)
 district_crud = CRUDBase(District)

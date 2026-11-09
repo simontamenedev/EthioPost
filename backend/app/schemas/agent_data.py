@@ -38,6 +38,9 @@ class TransactionRead(_FactRead):
     txn_count: int
     total_amount: Decimal
     failure_reason: str | None
+    commission_rate_id: uuid.UUID | None = None
+    commission_rate: Decimal | None = None
+    commission_amount: Decimal | None = None
 
 
 class RegistrationRead(_FactRead):
