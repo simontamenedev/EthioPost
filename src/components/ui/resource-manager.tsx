@@ -54,6 +54,8 @@ type ResourceManagerProps<TRow extends { id: string }, TForm extends FieldValues
   /** e.g. stop an admin deleting their own account */
   canDeleteRow?: (row: TRow) => boolean;
   toolbarExtra?: ReactNode;
+
+   resetPageKey?: unknown;
   /** width of the add/edit modal */
   modalSize?: "sm" | "md" | "lg";
   /** When provided, a "View" action appears and the detail slides in beside the table. */
@@ -66,11 +68,17 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
   title, description, singular, searchPlaceholder = "Search…",
   columns, useList, createMutation, updateMutation, deleteMutation,
   createSchema, updateSchema, fields, emptyValues, toFormValues, toCreatePayload, toUpdatePayload,
-  rowLabel, canDeleteRow, toolbarExtra, modalSize = "md", renderDetail,
+  rowLabel, canDeleteRow, toolbarExtra,resetPageKey, modalSize = "md", renderDetail,
 }: ResourceManagerProps<TRow, TForm, TCreate, TUpdate>) {
   const isAdmin = useIsAdmin();
 
   const [page, setPage] = useState(0);
+    // Reset to the first page when an external filter changes (no effect needed).
+  const [prevResetKey, setPrevResetKey] = useState(resetPageKey);
+  if (prevResetKey !== resetPageKey) {
+    setPrevResetKey(resetPageKey);
+    setPage(0);
+  }
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<Status | "">("");
   const q = useDebouncedValue(search.trim());
@@ -185,7 +193,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
             <option value="inactive">Inactive</option>
           </select>
         </div>
-        {toolbarExtra && <div className="flex items-center gap-2 sm:ml-auto">{toolbarExtra}</div>}
+        {toolbarExtra && <div >{toolbarExtra}</div>}
       </div>
 
       {/* Table on the left; the detail panel slides in on the right and pushes the table narrower.

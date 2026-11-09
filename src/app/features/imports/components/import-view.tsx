@@ -34,10 +34,11 @@ import type { DatasetKey, ImportBatch } from "../../../../lib/api/analytics-type
 import { uploadSchema } from "../schema";
 import { useDeleteImport, useImports, useRelinkAgents, useUploadCsv } from "../hooks/use-imports";
 import { card, pageDescription, pageShell, pageTitle } from "../../analytics/styles/styles";
+import { useFsps } from "../../../../lib/hooks/use-fsps";
 
 /* ───────────────────────────── constants & types ───────────────────────────── */
 
-/** Each dataset is a folder. */
+/** Inside each provider, each dataset is a folder. */
 const LABELS: Record<DatasetKey, string> = {
   transactions: "Transactions",
   registrations: "Customer Registration",
@@ -68,11 +69,13 @@ const SORT_LABELS: Record<SortKey, string> = {
 const FOLDER_SORTS: SortKey[] = ["name", "modified"];
 const FILE_SORTS = Object.keys(SORT_LABELS) as SortKey[];
 
+/** fsp = provider folder (Telebirr, CBE…), folder = dataset folder, file = one imported CSV. */
 type Entry = {
   id: string;
-  kind: "folder" | "file";
+  kind: "fsp" | "folder" | "file";
   name: string;
-  dataset: DatasetKey;
+  fspId: string;
+  dataset?: DatasetKey;
   modified: string | null;
   count: number;
   batch?: ImportBatch;
@@ -165,6 +168,10 @@ const plural = (n: number) => `${n.toLocaleString()} ${n === 1 ? "item" : "items
 const periodText = (b: ImportBatch) => `${b.date_from ?? "—"} → ${b.date_to ?? "—"}`;
 const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
+function latest(batches: ImportBatch[]): string | null {
+  return batches.reduce<string | null>((m, b) => (!m || b.created_at > m ? b.created_at : m), null);
+}
+
 function sortValue(e: Entry, key: SortKey): string | number {
   const b = e.batch;
   switch (key) {
@@ -204,7 +211,7 @@ function FolderIcon({ size = 20 }: { size?: number }) {
 function FileIcon({ size = 20 }: { size?: number }) {
   return <FileSpreadsheet size={size} strokeWidth={1.5} className="shrink-0 text-emerald-600 dark:text-emerald-400" />;
 }
-const EntryIcon = ({ e, size }: { e: Entry; size: number }) => (e.kind === "folder" ? <FolderIcon size={size} /> : <FileIcon size={size} />);
+const EntryIcon = ({ e, size }: { e: Entry; size: number }) => (e.kind === "file" ? <FileIcon size={size} /> : <FolderIcon size={size} />);
 
 function MenuItem({
   checked, danger, disabled, onClick, children,
@@ -304,7 +311,8 @@ const nameCell = (e: Entry) => (
 const onBatch = (fn: (b: ImportBatch) => ReactNode) => (e: Entry) => (e.batch ? fn(e.batch) : null);
 const warn = (n: number) => (n > 0 ? "font-semibold text-amber-600 dark:text-amber-300" : "");
 
-const ROOT_COLS: Col[] = [
+/** Used for provider folders and dataset folders. */
+const FOLDER_COLS: Col[] = [
   { key: "name", header: "Name", w: "w-[46%]", cell: nameCell },
   { key: "modified", header: "Date modified", w: "w-[24%]", cell: (e) => formatModified(e.modified) },
   { key: null, header: "Type", w: "w-[18%]", cell: () => "File folder" },
@@ -327,9 +335,10 @@ export function ImportsView() {
   const isAdmin = useIsAdmin();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
-  const targetRef = useRef<DatasetKey>("transactions");
+  const targetRef = useRef<{ fsp: string; ds: DatasetKey } | null>(null);
 
-  // explorer state
+  // explorer state: Documents → provider (openFsp) → dataset folder (openFolder) → files
+  const [openFsp, setOpenFsp] = useState<string | null>(null);
   const [openFolder, setOpenFolder] = useState<DatasetKey | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [view, setView] = useState<View>("details");
@@ -345,10 +354,14 @@ export function ImportsView() {
   const filesRef = useRef(new Map<string, File>()); // uploaded files kept for download this session
 
   const batches = useImports();
+  const fspQuery = useFsps();
   const upload = useUploadCsv();
   const remove = useDeleteImport();
   const relink = useRelinkAgents();
   const last = upload.data;
+
+  const fsps = useMemo(() => fspQuery.data ?? [], [fspQuery.data]);
+  const fspName = (id: string) => fsps.find((f) => f.id === id)?.name ?? "Provider";
 
   // close the context menu on any click / scroll / Escape
   useEffect(() => {
@@ -373,32 +386,64 @@ export function ImportsView() {
 
   const entries = useMemo<Entry[]>(() => {
     let list: Entry[];
-    if (openFolder) {
+    if (openFsp && openFolder) {
+      // level 2: the files of one dataset folder
       list = all
-        .filter((b) => b.dataset === openFolder)
-        .map((b) => ({ id: b.id, kind: "file", name: b.filename, dataset: b.dataset, modified: b.created_at, count: 1, batch: b }));
-    } else {
+        .filter((b) => b.fsp_id === openFsp && b.dataset === openFolder)
+        .map((b) => ({
+          id: b.id, kind: "file", name: b.filename, fspId: openFsp,
+          dataset: b.dataset, modified: b.created_at, count: 1, batch: b,
+        }));
+    } else if (openFsp) {
+      // level 1: the dataset folders of one provider
       list = ORDER.map((ds) => {
-        const files = all.filter((b) => b.dataset === ds);
-        const modified = files.reduce<string | null>((m, b) => (!m || b.created_at > m ? b.created_at : m), null);
-        return { id: `folder:${ds}`, kind: "folder", name: LABELS[ds], dataset: ds, modified, count: files.length };
+        const files = all.filter((b) => b.fsp_id === openFsp && b.dataset === ds);
+        return {
+          id: `folder:${ds}`, kind: "folder", name: LABELS[ds], fspId: openFsp,
+          dataset: ds, modified: latest(files), count: files.length,
+        };
+      });
+    } else {
+      // level 0: provider folders (Telebirr, CBE…)
+      list = fsps.map((f) => {
+        const files = all.filter((b) => b.fsp_id === f.id);
+        return { id: `fsp:${f.id}`, kind: "fsp", name: f.name, fspId: f.id, modified: latest(files), count: files.length };
       });
     }
     const q = query.trim().toLowerCase();
     if (q) list = list.filter((e) => e.name.toLowerCase().includes(q));
     return [...list].sort((a, b) => compareEntries(a, b, { key: activeKey, dir: sort.dir }));
-  }, [all, openFolder, query, activeKey, sort.dir]);
+  }, [all, fsps, openFsp, openFolder, query, activeKey, sort.dir]);
 
   const selected = entries.find((e) => e.id === sel) ?? null;
-  const uploadTarget: DatasetKey | null = openFolder ?? (selected?.kind === "folder" ? selected.dataset : null);
+  const uploadTarget: DatasetKey | null = openFsp
+    ? openFolder ?? (selected?.kind === "folder" ? selected.dataset ?? null : null)
+    : null;
 
   /* ── navigation ── */
-  function openDataset(ds: DatasetKey) {
-    setOpenFolder(ds);
+  function openEntry(e: Entry) {
+    if (e.kind === "fsp") {
+      setOpenFsp(e.fspId);
+      setOpenFolder(null);
+    } else if (e.kind === "folder" && e.dataset) {
+      setOpenFolder(e.dataset);
+    }
+    setSel(null);
+    setQuery("");
+  }
+  function goUp() {
+    if (openFolder) setOpenFolder(null);
+    else setOpenFsp(null);
     setSel(null);
     setQuery("");
   }
   function goRoot() {
+    setOpenFsp(null);
+    setOpenFolder(null);
+    setSel(null);
+    setQuery("");
+  }
+  function goFsp() {
     setOpenFolder(null);
     setSel(null);
     setQuery("");
@@ -407,20 +452,20 @@ export function ImportsView() {
     setSort((s) => (activeKey === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "modified" ? "desc" : "asc" }));
   }
 
-  /* ── upload (same validation + mutation as before, now per folder) ── */
-  function startUpload(ds: DatasetKey) {
-    targetRef.current = ds;
+  /* ── upload (same validation + mutation as before, now per provider + folder) ── */
+  function startUpload(fsp: string, ds: DatasetKey) {
+    targetRef.current = { fsp, ds };
     inputRef.current?.click();
   }
 
-  async function uploadFiles(ds: DatasetKey, files: File[]) {
+  async function uploadFiles(fspId: string, ds: DatasetKey, files: File[]) {
     setFormError(null);
     for (const f of files) {
       if (!/\.csv$/i.test(f.name)) {
         setFormError({ title: "Unsupported file type", message: `“${f.name}” is not a .csv file. Only CSV reports exported from the agent monitoring system are accepted.` });
         return;
       }
-      const parsed = uploadSchema.safeParse({ dataset: ds, file: f });
+      const parsed = uploadSchema.safeParse({ fsp_id: fspId, dataset: ds, file: f });
       if (!parsed.success) {
         setFormError({ title: "Check your upload", message: parsed.error.issues[0].message });
         return;
@@ -428,7 +473,7 @@ export function ImportsView() {
       setUploading(f.name);
       try {
         const batch = await upload.mutateAsync(parsed.data);
-        toast.success("Import complete", { description: `${batch.rows_imported.toLocaleString()} rows imported from ${batch.filename}.` });
+        toast.success("Import complete", { description: `${batch.rows_imported.toLocaleString()} rows imported from ${batch.filename} (${fspName(fspId)}).` });
         filesRef.current.set(batch.id, f);
         setSel(batch.id);
       } catch (error) {
@@ -451,9 +496,9 @@ export function ImportsView() {
     } catch (error) {
       const missing = error instanceof ApiError && (error.status === 404 || error.status === 405);
       toast.error("Couldn't download the file", {
-       description: missing
-  ? "The original file isn't stored on the server (it was uploaded before file storage was added). Upload it again to get a copy."
-  : friendlyError(error).message,
+        description: missing
+          ? "The original file isn't stored on the server (it was uploaded before file storage was added). Upload it again to get a copy."
+          : friendlyError(error).message,
       });
     }
   }
@@ -473,8 +518,9 @@ export function ImportsView() {
   }
 
   async function handleRelink() {
+    if (!openFsp) return;
     try {
-      const res = await relink.mutateAsync();
+      const res = await relink.mutateAsync(openFsp);
       const { linkedTotal, createdTotal, description } = summarizeRelink(res);
 
       if (createdTotal > 0) {
@@ -483,7 +529,7 @@ export function ImportsView() {
       }
 
       if (linkedTotal === 0 && createdTotal === 0) {
-        toast.info("Nothing to link", { description: "Every imported row is already linked to an agent, and no new agents were needed." });
+        toast.info("Nothing to link", { description: `Every ${fspName(openFsp)} row is already linked to an agent, and no new agents were needed.` });
       } else {
         toast.success("Agents linked", { description, duration: 8000 });
       }
@@ -498,13 +544,13 @@ export function ImportsView() {
     if (ev.key === "Delete" && selected?.batch) {
       ev.preventDefault();
       setToRollback(selected.batch);
-    } else if (ev.key === "Enter" && selected?.kind === "folder") {
-      openDataset(selected.dataset);
+    } else if (ev.key === "Enter" && selected && selected.kind !== "file") {
+      openEntry(selected);
     } else if (ev.key === "Enter" && selected?.batch) {
       void downloadBatch(selected.batch);
-    } else if ((ev.key === "Backspace" || (ev.altKey && ev.key === "ArrowUp")) && openFolder) {
+    } else if ((ev.key === "Backspace" || (ev.altKey && ev.key === "ArrowUp")) && openFsp) {
       ev.preventDefault();
-      goRoot();
+      goUp();
     } else if (ev.key === "Escape") {
       setSel(null);
     }
@@ -513,7 +559,7 @@ export function ImportsView() {
   function paneDragOver(ev: React.DragEvent) {
     if (!hasFiles(ev)) return;
     ev.preventDefault();
-    if (openFolder) setDropId("pane");
+    if (openFsp && openFolder) setDropId("pane");
   }
   function paneDragLeave(ev: React.DragEvent) {
     if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) setDropId(null);
@@ -523,8 +569,10 @@ export function ImportsView() {
     ev.preventDefault();
     setDropId(null);
     const files = Array.from(ev.dataTransfer.files);
-    if (openFolder) void uploadFiles(openFolder, files);
-    else toast.info("Drop onto a folder", { description: "Drag the file onto Transactions, Customer Registration or Customer Upgradation." });
+    if (openFsp && openFolder) void uploadFiles(openFsp, openFolder, files);
+    else if (openFsp)
+      toast.info("Drop onto a folder", { description: "Drag the file onto Transactions, Customer Registration or Customer Upgradation." });
+    else toast.info("Open a provider first", { description: "Open a provider folder, then drop the file onto a dataset folder." });
   }
 
   /* ── per-item behaviour shared by every view ── */
@@ -534,13 +582,13 @@ export function ImportsView() {
       "aria-selected": sel === e.id,
       tabIndex: 0,
       onClick: () => setSel(e.id),
-      onDoubleClick: () => { if (e.kind === "folder") openDataset(e.dataset); else if (e.batch) void downloadBatch(e.batch); },
+      onDoubleClick: () => { if (e.kind !== "file") openEntry(e); else if (e.batch) void downloadBatch(e.batch); },
       onContextMenu: (ev: React.MouseEvent) => {
         ev.preventDefault();
         setSel(e.id);
         setCtx({ x: ev.clientX, y: ev.clientY, entry: e });
       },
-      ...(e.kind === "folder"
+      ...(e.kind === "folder" && e.dataset
         ? {
             onDragOver: (ev: React.DragEvent) => {
               if (!hasFiles(ev)) return;
@@ -554,7 +602,7 @@ export function ImportsView() {
               ev.preventDefault();
               ev.stopPropagation();
               setDropId(null);
-              void uploadFiles(e.dataset, Array.from(ev.dataTransfer.files));
+              void uploadFiles(e.fspId, e.dataset as DatasetKey, Array.from(ev.dataTransfer.files));
             },
           }
         : {}),
@@ -570,7 +618,7 @@ export function ImportsView() {
   }
 
   const subtitle = (e: Entry) =>
-    e.kind === "folder" ? plural(e.count) : e.batch ? `${e.batch.rows_imported.toLocaleString()} rows · ${periodText(e.batch)}` : "";
+    e.kind !== "file" ? plural(e.count) : e.batch ? `${e.batch.rows_imported.toLocaleString()} rows · ${periodText(e.batch)}` : "";
 
   /* ── admin gate (hooks above stay unconditional) ── */
   if (!isAdmin) {
@@ -584,8 +632,10 @@ export function ImportsView() {
 
   const hasWarnings = !!last && (last.rows_invalid > 0 || last.rows_unmatched > 0 || (last.errors?.length ?? 0) > 0);
   const extraErrors = (last?.errors?.length ?? 0) - 10;
-  const cols = openFolder ? FILE_COLS : ROOT_COLS;
-  const title = openFolder ? LABELS[openFolder] : ROOT;
+  const cols = openFolder ? FILE_COLS : FOLDER_COLS;
+  const title = openFolder ? LABELS[openFolder] : openFsp ? fspName(openFsp) : ROOT;
+  const loading = batches.isLoading || fspQuery.isLoading;
+  const loadError = batches.isError ? batches.error : fspQuery.isError ? fspQuery.error : null;
 
   /* ── views ── */
   const detailsView = (
@@ -645,7 +695,7 @@ export function ImportsView() {
           <EntryIcon e={e} size={40} />
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{e.name}</p>
-            <p className="truncate text-xs text-slate-500 dark:text-white/60">{e.kind === "folder" ? "File folder" : "CSV file"}</p>
+            <p className="truncate text-xs text-slate-500 dark:text-white/60">{e.kind === "file" ? "CSV file" : "File folder"}</p>
             <p className="truncate text-xs text-slate-500 dark:text-white/60">{subtitle(e)}</p>
           </div>
         </div>
@@ -670,7 +720,7 @@ export function ImportsView() {
     <div className="flex min-h-[calc(100vh-68px)] w-full flex-col gap-5 px-5 py-7 text-slate-900 dark:text-white sm:px-8 lg:px-10">
       <div className="min-w-0">
         <h1 className={cn(pageTitle, "dark:text-white")}>Data imports</h1>
-        <p className={cn(pageDescription, "dark:text-white/70")}>Open a folder and upload the agent monitoring CSV reports. Re-uploading overlapping files never creates duplicates.</p>
+        <p className={cn(pageDescription, "dark:text-white/70")}>Open a provider, then a folder, and upload the agent monitoring CSV reports. Re-uploading overlapping files never creates duplicates.</p>
       </div>
 
       {formError && <Alert {...formError} onDismiss={() => setFormError(null)} />}
@@ -687,7 +737,9 @@ export function ImportsView() {
               <p className="font-semibold text-slate-900 dark:text-white">
                 {hasWarnings ? "Import completed with warnings" : "Import completed successfully"}
               </p>
-              <p className="mt-0.5 truncate text-sm text-slate-600 dark:text-white/70">{last.filename}</p>
+              <p className="mt-0.5 truncate text-sm text-slate-600 dark:text-white/70">
+                {fspName(last.fsp_id)} · {last.filename}
+              </p>
             </div>
             <button type="button" aria-label="Dismiss summary" onClick={() => upload.reset()} className={cn("rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:text-white/70 dark:hover:bg-white/10", focusRing)}>
               <X size={16} />
@@ -704,7 +756,7 @@ export function ImportsView() {
           {last.unmatched_shortcodes && last.unmatched_shortcodes.length > 0 && (
             <div className="mt-4">
               <p className="text-sm text-slate-700 dark:text-white/80">
-                These agents are not in Agents master data yet. Select “Link agents” to create them (with their district and branch) and link the imported rows, or add them yourself first.
+                These agents are not in Agents master data yet. Open {fspName(last.fsp_id)} and select “Link agents” to create them (with their district and branch) and link the imported rows, or add them yourself first.
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {last.unmatched_shortcodes.map((code) => (
@@ -750,27 +802,42 @@ export function ImportsView() {
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
             e.target.value = ""; // allow picking the same file again
-            if (files.length) void uploadFiles(targetRef.current, files);
+            const t = targetRef.current;
+            if (files.length && t) void uploadFiles(t.fsp, t.ds, files);
           }}
         />
 
         {/* address bar + search */}
         <div className="flex items-center gap-2 p-3">
-          <button type="button" aria-label={`Up to ${ROOT}`} title={`Up to ${ROOT}`} disabled={!openFolder} onClick={goRoot} className={cn(cmdBtn, "w-9 justify-center px-0")}>
+          <button type="button" aria-label="Up one level" title="Up one level" disabled={!openFsp} onClick={goUp} className={cn(cmdBtn, "w-9 justify-center px-0")}>
             <ArrowUp size={16} />
           </button>
           <nav aria-label="Location" className="flex h-10 min-w-0 flex-1 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 dark:border-white/20 dark:bg-white/5 dark:text-white">
             <FolderIcon size={16} />
-            {openFolder ? (
+            {openFsp ? (
               <>
                 <button type="button" onClick={goRoot} className={cn("rounded px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-white/10", focusRing)}>{ROOT}</button>
                 <ChevronRight size={14} className="shrink-0 text-slate-400 dark:text-white/50" />
-                <span aria-current="page" className="truncate px-1.5 font-medium">{LABELS[openFolder]}</span>
+                {openFolder ? (
+                  <>
+                    <button type="button" onClick={goFsp} className={cn("truncate rounded px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-white/10", focusRing)}>{fspName(openFsp)}</button>
+                    <ChevronRight size={14} className="shrink-0 text-slate-400 dark:text-white/50" />
+                    <span aria-current="page" className="truncate px-1.5 font-medium">{LABELS[openFolder]}</span>
+                  </>
+                ) : (
+                  <span aria-current="page" className="truncate px-1.5 font-medium">{fspName(openFsp)}</span>
+                )}
               </>
             ) : (
               <span aria-current="page" className="truncate px-1.5 font-medium">{ROOT}</span>
             )}
-            <button type="button" aria-label="Refresh" title="Refresh" onClick={() => void batches.refetch()} className={cn("ml-auto rounded p-1 text-slate-500 hover:bg-slate-100 dark:text-white/70 dark:hover:bg-white/10", focusRing)}>
+            <button
+              type="button"
+              aria-label="Refresh"
+              title="Refresh"
+              onClick={() => { void batches.refetch(); void fspQuery.refetch(); }}
+              className={cn("ml-auto rounded p-1 text-slate-500 hover:bg-slate-100 dark:text-white/70 dark:hover:bg-white/10", focusRing)}
+            >
               <RotateCw size={14} className={batches.isFetching ? "animate-spin" : ""} />
             </button>
           </nav>
@@ -788,15 +855,20 @@ export function ImportsView() {
 
         {/* command bar */}
         <div className="flex items-center gap-1 border-y border-slate-200 px-3 py-1.5 dark:border-white/10">
-          {uploadTarget ? (
-            <button type="button" title={`Upload to ${LABELS[uploadTarget]}`} aria-label="Upload" disabled={upload.isPending} onClick={() => startUpload(uploadTarget)} className={cmdBtn}>
+          {!openFsp ? (
+            <button type="button" title="Open a provider first" aria-label="Upload" disabled className={cmdBtn}>
+              <Upload size={16} className="text-[#2c317b] dark:text-[#f3ad1c]" />
+              <span className="hidden sm:inline">Upload</span>
+            </button>
+          ) : uploadTarget ? (
+            <button type="button" title={`Upload to ${fspName(openFsp)} / ${LABELS[uploadTarget]}`} aria-label="Upload" disabled={upload.isPending} onClick={() => startUpload(openFsp, uploadTarget)} className={cmdBtn}>
               <Upload size={16} className="text-[#2c317b] dark:text-[#f3ad1c]" />
               <span className="hidden sm:inline">Upload</span>
             </button>
           ) : (
             <Dropdown label="Upload" icon={<Upload size={16} className="text-[#2c317b] dark:text-[#f3ad1c]" />}>
               {ORDER.map((ds) => (
-                <MenuItem key={ds} onClick={() => startUpload(ds)}>{LABELS[ds]}</MenuItem>
+                <MenuItem key={ds} onClick={() => startUpload(openFsp, ds)}>{LABELS[ds]}</MenuItem>
               ))}
             </Dropdown>
           )}
@@ -811,7 +883,14 @@ export function ImportsView() {
             <span className="hidden sm:inline">Delete</span>
           </button>
 
-          <button type="button" aria-label="Link agents" title="Create missing agents, branches and districts, then link imported rows to agents" disabled={relink.isPending} onClick={() => void handleRelink()} className={cmdBtn}>
+          <button
+            type="button"
+            aria-label="Link agents"
+            title={openFsp ? `Create missing agents, branches and districts for ${fspName(openFsp)}, then link its imported rows to agents` : "Open a provider first"}
+            disabled={!openFsp || relink.isPending}
+            onClick={() => void handleRelink()}
+            className={cmdBtn}
+          >
             <Link2 size={16} />
             <span className="hidden md:inline">{relink.isPending ? "Linking…" : "Link agents"}</span>
           </button>
@@ -854,18 +933,18 @@ export function ImportsView() {
           onDragLeave={paneDragLeave}
           onDrop={paneDrop}
         >
-          {batches.isLoading ? (
+          {loading ? (
             <div aria-hidden className="animate-pulse space-y-2 px-4 py-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="h-9 rounded-md bg-slate-100 dark:bg-white/10" />
               ))}
             </div>
-          ) : batches.isError ? (
+          ) : loadError ? (
             <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
               <AlertCircle size={28} className="text-red-600 dark:text-red-300" />
               <p className="font-semibold text-slate-900 dark:text-white">Couldn’t load your files</p>
-              <p className="max-w-md text-sm text-slate-600 dark:text-white/70">{friendlyError(batches.error).message}</p>
-              <button type="button" onClick={() => void batches.refetch()} className={cn(cmdBtn, "mt-1 border border-slate-300 dark:border-white/20")}>
+              <p className="max-w-md text-sm text-slate-600 dark:text-white/70">{friendlyError(loadError).message}</p>
+              <button type="button" onClick={() => { void batches.refetch(); void fspQuery.refetch(); }} className={cn(cmdBtn, "mt-1 border border-slate-300 dark:border-white/20")}>
                 <RotateCw size={14} /> Try again
               </button>
             </div>
@@ -873,19 +952,28 @@ export function ImportsView() {
             <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
               <FolderIcon size={56} />
               <p className="font-semibold text-slate-900 dark:text-white">
-                {query ? "No items match your search" : openFolder ? "This folder is empty" : "Nothing here yet"}
+                {query
+                  ? "No items match your search"
+                  : openFolder
+                    ? "This folder is empty"
+                    : openFsp
+                      ? "Nothing here yet"
+                      : "No service providers yet"}
               </p>
               {!query && openFolder && (
                 <p className="text-sm text-slate-600 dark:text-white/70">Drag CSV files here, or select Upload to add your first report.</p>
+              )}
+              {!query && !openFsp && (
+                <p className="text-sm text-slate-600 dark:text-white/70">Add a service provider (for example Telebirr or CBE) first, then upload its reports here.</p>
               )}
             </div>
           ) : (
             body
           )}
 
-          {dropId === "pane" && openFolder && (
+          {dropId === "pane" && openFsp && openFolder && (
             <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-xl border-2 border-dashed border-[#2c317b] bg-sky-50/80 text-sm font-semibold text-[#2c317b] dark:border-[#f3ad1c] dark:bg-[#f3ad1c]/10 dark:text-[#f3ad1c]">
-              Drop to upload to {LABELS[openFolder]}
+              Drop to upload to {fspName(openFsp)} / {LABELS[openFolder]}
             </div>
           )}
         </div>
@@ -916,12 +1004,16 @@ export function ImportsView() {
           className="fixed z-50 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-white/15 dark:bg-[#1d2170]"
           onContextMenu={(e) => e.preventDefault()}
         >
-          {ctx.entry.kind === "folder" ? (
+          {ctx.entry.kind === "fsp" && (
+            <MenuItem onClick={() => { openEntry(ctx.entry); setCtx(null); }}>Open</MenuItem>
+          )}
+          {ctx.entry.kind === "folder" && ctx.entry.dataset && (
             <>
-              <MenuItem onClick={() => { openDataset(ctx.entry.dataset); setCtx(null); }}>Open</MenuItem>
-              <MenuItem onClick={() => { startUpload(ctx.entry.dataset); setCtx(null); }}>Upload files here</MenuItem>
+              <MenuItem onClick={() => { openEntry(ctx.entry); setCtx(null); }}>Open</MenuItem>
+              <MenuItem onClick={() => { startUpload(ctx.entry.fspId, ctx.entry.dataset as DatasetKey); setCtx(null); }}>Upload files here</MenuItem>
             </>
-          ) : (
+          )}
+          {ctx.entry.kind === "file" && (
             <>
               <MenuItem onClick={() => { if (ctx.entry.batch) void downloadBatch(ctx.entry.batch); setCtx(null); }}>Download</MenuItem>
               <MenuItem danger onClick={() => { if (ctx.entry.batch) setToRollback(ctx.entry.batch); setCtx(null); }}>

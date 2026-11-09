@@ -2,7 +2,13 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "../api/client";
 import type { AuditLog } from "../api/types";
 
-export type AuditModel = "Branch" | "District" | "Agent";
+export type AuditModel =
+  | "Branch"
+  | "District"
+  | "Agent"
+  | "FinancialServiceProvider"
+  | "ServiceType"
+  | "CommissionRule";
 
 export const auditKeys = {
   all: ["audit-logs"] as const,

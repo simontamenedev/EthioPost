@@ -6,11 +6,22 @@ import { api, ApiError } from "../../../../lib/api/client";
 
 const KEY = ["imports"] as const;
 
-export function useImports(dataset?: DatasetKey) {
+/** What POST /imports/relink returns. */
+export type RelinkResponse = {
+  linked: Record<DatasetKey, number>;
+  created: { districts: number; branches: number; agents: number };
+};
+
+export function useImports(opts: { dataset?: DatasetKey; fspId?: string } = {}) {
+  const { dataset, fspId } = opts;
   return useQuery<ImportBatch[], ApiError>({
-    queryKey: [...KEY, dataset ?? "all"],
+    queryKey: [...KEY, fspId ?? "all", dataset ?? "all"],
     queryFn: ({ signal }) =>
-      api<ImportBatch[]>("/imports", { query: { dataset, limit: 100 }, signal }),
+      api<ImportBatch[]>("/imports", {
+        // the explorer groups by provider and dataset in the browser, so fetch them all
+        query: { fsp_id: fspId, dataset, limit: 500 },
+        signal,
+      }),
   });
 }
 
@@ -26,9 +37,10 @@ function useRefresh() {
 
 export function useUploadCsv() {
   const refresh = useRefresh();
-  return useMutation<ImportBatch, ApiError, { dataset: DatasetKey; file: File }>({
-    mutationFn: ({ dataset, file }) => {
+  return useMutation<ImportBatch, ApiError, { fsp_id: string; dataset: DatasetKey; file: File }>({
+    mutationFn: ({ fsp_id, dataset, file }) => {
       const formData = new FormData();
+      formData.append("fsp_id", fsp_id);
       formData.append("dataset", dataset);
       formData.append("file", file);
       return api<ImportBatch>("/imports", { method: "POST", formData });
@@ -45,11 +57,12 @@ export function useDeleteImport() {
   });
 }
 
+/** Links one provider's imported rows to agents. The variable is the provider id. */
 export function useRelinkAgents() {
   const refresh = useRefresh();
-  return useMutation<Record<DatasetKey, number>, ApiError, void>({
-    mutationFn: () =>
-      api<Record<DatasetKey, number>>("/imports/relink", { method: "POST" }),
+  return useMutation<RelinkResponse, ApiError, string>({
+    mutationFn: (fspId) =>
+      api<RelinkResponse>("/imports/relink", { method: "POST", query: { fsp_id: fspId } }),
     onSuccess: refresh,
   });
 }

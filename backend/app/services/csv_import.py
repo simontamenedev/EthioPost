@@ -1,9 +1,11 @@
 """CSV ingestion for the three agent-monitoring reports.
 
 Flow: validate headers -> parse/clean every row -> hash rows (idempotency) ->
-skip rows already imported -> resolve agent_id from the agents master data ->
-bulk insert under one ImportBatch -> commit. Nothing is written if anything
-unexpected fails.
+skip rows already imported for this provider -> resolve agent_id from the agents
+master data -> bulk insert under one ImportBatch -> commit. Nothing is written
+if anything unexpected fails.
+
+Every import belongs to one financial service provider (fsp_id): Telebirr, CBE, ...
 """
 from __future__ import annotations
 
@@ -39,6 +41,9 @@ MAX_ERRORS = 50
 CHUNK = 1000
 CUSTOMER = "CUSTOMER"
 UNASSIGNED = "Unassigned"  # fallback when a row has no region / organization
+
+# Set to False if the `agents` table has NO fsp_id column (agent short codes are global).
+AGENTS_HAVE_FSP = False
 
 
 class CsvFormatError(ValueError):
@@ -169,13 +174,21 @@ def _digest(values: dict[str, Any]) -> str:
     return hashlib.sha256(repr(sorted(values.items())).encode()).hexdigest()
 
 
-def _agent_map(db: Session) -> dict[str, uuid.UUID]:
-    rows = db.execute(select(Agent.agent_shortcode, Agent.id).where(Agent.deleted_at.is_(None))).all()
-    return {code: agent_id for code, agent_id in rows}
+def _agent_map(db: Session, fsp_id: uuid.UUID) -> dict[str, uuid.UUID]:
+    stmt = select(Agent.agent_shortcode, Agent.id).where(Agent.deleted_at.is_(None))
+    if AGENTS_HAVE_FSP:
+        stmt = stmt.where(Agent.fsp_id == fsp_id)
+    return {code: agent_id for code, agent_id in db.execute(stmt).all()}
 
 
 def import_csv(
-    db: Session, *, dataset: Dataset, filename: str, content: bytes, actor_id: uuid.UUID
+    db: Session,
+    *,
+    fsp_id: uuid.UUID,
+    dataset: Dataset,
+    filename: str,
+    content: bytes,
+    actor_id: uuid.UUID,
 ) -> ImportBatch:
     spec = SPECS[dataset]
     model = spec.model
@@ -183,13 +196,14 @@ def import_csv(
     file_hash = hashlib.sha256(content).hexdigest()
     already = db.scalar(
         select(ImportBatch.id).where(
+            ImportBatch.fsp_id == fsp_id,
             ImportBatch.dataset == dataset,
             ImportBatch.file_hash == file_hash,
             ImportBatch.deleted_at.is_(None),
         )
     )
     if already:
-        raise DuplicateFileError("This exact file has already been imported")
+        raise DuplicateFileError("This exact file has already been imported for this provider")
 
     try:
         df = pd.read_csv(io.BytesIO(content), dtype=str, keep_default_na=False, encoding="utf-8-sig")
@@ -228,7 +242,9 @@ def import_csv(
         existing.update(
             db.scalars(
                 select(model.row_hash).where(
-                    model.row_hash.in_(hashes[i : i + CHUNK]), model.deleted_at.is_(None)
+                    model.fsp_id == fsp_id,
+                    model.row_hash.in_(hashes[i : i + CHUNK]),
+                    model.deleted_at.is_(None),
                 )
             )
         )
@@ -239,7 +255,7 @@ def import_csv(
     if dataset == Dataset.TRANSACTIONS:
         apply_commission(fresh, rate_lookup(db))
 
-    agents = _agent_map(db)
+    agents = _agent_map(db, fsp_id)
     unmatched_codes = sorted({v["agent_shortcode"] for v in fresh if v["agent_shortcode"] not in agents})
     unmatched_rows = sum(1 for v in fresh if v["agent_shortcode"] not in agents)
     dates = [v[spec.date_field] for v in parsed]
@@ -248,6 +264,7 @@ def import_csv(
     batch_id: uuid.UUID | None = None
     try:
         batch = ImportBatch(
+            fsp_id=fsp_id,
             dataset=dataset,
             filename=filename[:255],
             file_hash=file_hash,
@@ -274,6 +291,7 @@ def import_csv(
             db.add_all(
                 model(
                     **v,
+                    fsp_id=fsp_id,
                     agent_id=agents.get(v["agent_shortcode"]),
                     import_batch_id=batch_id,
                     created_by=actor_id,
@@ -303,15 +321,17 @@ def _stage_create(db: Session, model: type, data: dict[str, Any], actor_id: uuid
     return obj
 
 
-def _orphan_locations(db: Session, known: dict[str, uuid.UUID]) -> dict[str, tuple[str, str]]:
-    """agent_shortcode -> (region, organization) for imported rows whose agent doesn't exist yet.
-    If a code appears under several organizations, the most frequent one wins."""
+def _orphan_locations(
+    db: Session, known: dict[str, uuid.UUID], fsp_id: uuid.UUID
+) -> dict[str, tuple[str, str]]:
+    """agent_shortcode -> (region, organization) for this provider's imported rows whose agent
+    doesn't exist yet. If a code appears under several organizations, the most frequent one wins."""
     best: dict[str, tuple[int, str, str]] = {}
     for spec in SPECS.values():
         m = spec.model
         rows = db.execute(
             select(m.agent_shortcode, m.region, m.organization_name, func.count())
-            .where(m.agent_id.is_(None), m.deleted_at.is_(None))
+            .where(m.fsp_id == fsp_id, m.agent_id.is_(None), m.deleted_at.is_(None))
             .group_by(m.agent_shortcode, m.region, m.organization_name)
         ).all()
         for code, region, org, n in rows:
@@ -322,14 +342,17 @@ def _orphan_locations(db: Session, known: dict[str, uuid.UUID]) -> dict[str, tup
     return {code: (region, org) for code, (_, region, org) in best.items()}
 
 
-def relink_agents(db: Session, *, actor_id: uuid.UUID) -> dict[str, dict[str, int]]:
-    """Link imported rows to agents. Agents, branches (organizations) and districts (regions)
-    that don't exist yet are created first. Everything commits together or not at all."""
+def relink_agents(
+    db: Session, *, actor_id: uuid.UUID, fsp_id: uuid.UUID
+) -> dict[str, dict[str, int]]:
+    """Link one provider's imported rows to agents. Agents, branches (organizations) and
+    districts (regions) that don't exist yet are created first. Everything commits together
+    or not at all."""
     created = {"districts": 0, "branches": 0, "agents": 0}
     linked: dict[str, int] = {}
     try:
-        agents = _agent_map(db)
-        orphans = _orphan_locations(db, agents)
+        agents = _agent_map(db, fsp_id)
+        orphans = _orphan_locations(db, agents, fsp_id)
 
         if orphans:
             districts = {
@@ -362,31 +385,34 @@ def relink_agents(db: Session, *, actor_id: uuid.UUID) -> dict[str, dict[str, in
                     branches[(district_id, org.lower())] = branch_id
                     created["branches"] += 1
 
-                agents[code] = _stage_create(
-                    db, Agent,
-                    {
-                        "agent_shortcode": code,
-                        "agent_name": code,  # reports carry no agent name; edit it later
-                        "branch_id": branch_id,
-                        "district_id": district_id,
-                        "remark": "Auto-created from imported data",
-                    },
-                    actor_id,
-                ).id
+                agent_data = {
+                    "agent_shortcode": code,
+                    "agent_name": code,  # reports carry no agent name; edit it later
+                    "branch_id": branch_id,
+                    "district_id": district_id,
+                    "remark": "Auto-created from imported data",
+                }
+                if AGENTS_HAVE_FSP:
+                    agent_data["fsp_id"] = fsp_id
+                agents[code] = _stage_create(db, Agent, agent_data, actor_id).id
                 created["agents"] += 1
 
         for ds, spec in SPECS.items():
             model, total = spec.model, 0
             codes = db.scalars(
                 select(model.agent_shortcode)
-                .where(model.agent_id.is_(None), model.deleted_at.is_(None))
+                .where(model.fsp_id == fsp_id, model.agent_id.is_(None), model.deleted_at.is_(None))
                 .distinct()
             ).all()
             for code in codes:
                 if code in agents:
                     res = db.execute(
                         update(model)
-                        .where(model.agent_shortcode == code, model.agent_id.is_(None))
+                        .where(
+                            model.fsp_id == fsp_id,
+                            model.agent_shortcode == code,
+                            model.agent_id.is_(None),
+                        )
                         .values(agent_id=agents[code])
                     )
                     total += res.rowcount or 0

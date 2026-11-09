@@ -2,10 +2,12 @@ import {
   Building2,
   FileSpreadsheet,
   Folder,
+  Landmark,
   LayoutDashboard,
   MapPinned,
   Percent,
   ReceiptText,
+  Tags,
   UserCog,
   UserPlus,
   Users,
@@ -15,7 +17,10 @@ import {
 
 export type NavKey =
   | "overview" | "transactions" | "registrations" | "upgrades" | "imports" | "reports"
-  | "districts" | "branches" | "agents" | "commission-rates" | "users" | "roles";
+  | "districts" | "branches" | "agents"
+  | "fsps" | "service-types" | "commission-rules"
+  | "commission-rates" // legacy page, kept so existing `active` props still type-check
+  | "users" | "roles";
 
 export type NavItem = {
   label: string;
@@ -59,7 +64,16 @@ export const navSections: NavSection[] = [
       { label: "Districts", href: "/districts", key: "districts", icon: MapPinned },
       { label: "Branches", href: "/branches", key: "branches", icon: Building2 },
       { label: "Agents", href: "/agents", key: "agents", icon: Users },
-      { label: "Commission rates", href: "/commission-rates", key: "commission-rates", icon: Percent },
+    ],
+  },
+  {
+    title: "Commission",
+    items: [
+      { label: "Service providers", href: "/fsps", key: "fsps", icon: Landmark },
+      { label: "Service types", href: "/service-types", key: "service-types", icon: Tags },
+      { label: "Commission rules", href: "/commission-rules", key: "commission-rules", icon: Percent },
+      // Legacy flat-percent page. Remove once apply_commission uses commission rules.
+      { label: "Commission rates (legacy)", href: "/commission-rates", key: "commission-rates", icon: Percent },
     ],
   },
   {

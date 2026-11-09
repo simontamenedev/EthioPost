@@ -1,6 +1,14 @@
+import uuid
 from datetime import date
 
-from sqlalchemy import JSON, Date, Integer, String
+from sqlalchemy import (
+    JSON,
+    Date,
+    Integer,
+    String,
+    Uuid,
+    ForeignKey,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.datasets import Dataset
@@ -14,9 +22,9 @@ class ImportBatch(BaseEntity):
 
     __tablename__ = "import_batches"
     __table_args__ = (
-        active_unique_index("uq_import_batches_dataset_hash_active", "dataset", "file_hash"),
+    active_unique_index("uq_import_batches_fsp_dataset_hash_active", "fsp_id", "dataset", "file_hash"),
     )
-
+    fsp_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("financial_service_providers.id"), index=True)
     dataset: Mapped[Dataset] = mapped_column(enum_column(Dataset), index=True)
     filename: Mapped[str] = mapped_column(String(255))
     file_hash: Mapped[str] = mapped_column(String(64))

@@ -57,7 +57,7 @@ export type FilterOptions = {
 };
 
 export type ImportBatch = {
-  id: string; dataset: DatasetKey; filename: string; date_from: string | null; date_to: string | null;
+  id: string;fsp_id: string;   dataset: DatasetKey; filename: string; date_from: string | null; date_to: string | null;
   rows_total: number; rows_imported: number; rows_duplicate: number; rows_invalid: number;
   rows_unmatched: number; unmatched_shortcodes: string[] | null;
   errors: { line: number; error: string }[] | null; created_at: string;

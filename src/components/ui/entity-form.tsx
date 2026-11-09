@@ -13,7 +13,7 @@ export type FieldOption = { value: string; label: string };
 export type FieldConfig<T extends FieldValues> = {
   name: Path<T>;
   label: string;
-  type?: "text" | "email" | "password" | "textarea" | "select";
+ type?: "text" | "email" | "password" | "textarea" | "select" | "date";
   placeholder?: string;
   hint?: string;
   autoComplete?: string;
