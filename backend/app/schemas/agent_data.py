@@ -17,7 +17,24 @@ class Page(BaseModel, Generic[T]):
     limit: int
 
 
-class _FactRead(BaseModel):
+class CommissionSnapshotRead(BaseModel):
+    """Commission as calculated and frozen at import time."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    commission_rule_id: uuid.UUID | None = None
+    commission_rate_id: uuid.UUID | None = None
+    fsp_commission_type: str | None = None
+    fsp_commission_basis: str | None = None
+    fsp_commission_rate: Decimal | None = None
+    fsp_commission_amount: Decimal | None = None
+    agent_commission_rate: Decimal | None = None
+    agent_commission_amount: Decimal | None = None
+    ethiopost_commission_amount: Decimal | None = None
+    commission_status: str | None = None
+
+
+class _FactRead(CommissionSnapshotRead):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -38,9 +55,6 @@ class TransactionRead(_FactRead):
     txn_count: int
     total_amount: Decimal
     failure_reason: str | None
-    commission_rate_id: uuid.UUID | None = None
-    commission_rate: Decimal | None = None
-    commission_amount: Decimal | None = None
 
 
 class RegistrationRead(_FactRead):

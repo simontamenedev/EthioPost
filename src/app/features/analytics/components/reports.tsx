@@ -9,11 +9,13 @@ import { errorMessage } from "../../../../lib/api/client";
 import { useDebouncedValue } from "../../../../lib/hooks/use-debounced-value";
 import { cn } from "../../../../lib/utils";
 import { DateRangeFilter } from "./date-range-filter";
+import { CommissionKpis } from "./commission-kpis";
 import { AnalyticsFilters, DatasetKey, FilterOptions } from "../../../../lib/api/analytics-types";
 import { pageDescription, pageShell, pageTitle, secondaryButton } from "../styles/styles";
 import { formatInt } from "../../transactions/const/format";
 import { DateRange, presetRange } from "../lib/date-range";
 import { exportRows, useFilterOptions, useRows } from "../hooks/use-analytics";
+import { useFsps } from "../../fsp/hooks";
 
 const PAGE_SIZE = 20;
 
@@ -33,13 +35,15 @@ type Props<D extends DatasetKey> = {
   searchPlaceholder?: string;
 };
 
-/** Shared list page: date range, search, region + dataset filters, paging, CSV export. */
+/** Shared list page: KPIs, date range, search, provider/district/region + dataset filters, paging, CSV export. */
 export function ReportPage<D extends DatasetKey>({
   dataset, title, description, columns, sortField, extraFilters = [],
   searchPlaceholder = "Search by agent name or short code…",
 }: Props<D>) {
   const [range, setRange] = useState<DateRange>(presetRange("last30"));
   const [search, setSearch] = useState("");
+  const [fspId, setFspId] = useState("");
+  const [district, setDistrict] = useState("");
   const [region, setRegion] = useState("");
   const [extra, setExtra] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
@@ -47,10 +51,18 @@ export function ReportPage<D extends DatasetKey>({
   const q = useDebouncedValue(search.trim());
 
   const options = useFilterOptions();
-  const filters = { ...range, q: q || undefined, region: region || undefined, ...extra } as AnalyticsFilters;
+  const fsps = useFsps({ limit: 200 });
+  const filters = {
+    ...range,
+    q: q || undefined,
+    fsp_id: fspId || undefined,
+    district: district || undefined,
+    region: region || undefined,
+    ...extra,
+  } as AnalyticsFilters;
   const query = useRows(dataset, filters, { skip: page * PAGE_SIZE, limit: PAGE_SIZE, sort: sortField, order: "desc" });
   const total = query.data?.total ?? 0;
-  const hasFilters = !!(q || region || Object.values(extra).some(Boolean));
+  const hasFilters = !!(q || fspId || district || region || Object.values(extra).some(Boolean));
 
   async function handleExport() {
     setExporting(true);
@@ -77,23 +89,35 @@ export function ReportPage<D extends DatasetKey>({
       </div>
 
       <DateRangeFilter value={range} onChange={(r) => { setRange(r); setPage(0); }} />
-  <input
-          aria-label={`Search ${title.toLowerCase()}`}
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-          placeholder={searchPlaceholder}
-          className={cn(inputBase, "h-10 w-full sm:max-w-sm sm:flex-1")}
-        />
+
+      <CommissionKpis dataset={dataset} filters={filters} />
+
+      <input
+        aria-label={`Search ${title.toLowerCase()}`}
+        value={search}
+        onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+        placeholder={searchPlaceholder}
+        className={cn(inputBase, "h-10 w-full sm:max-w-sm sm:flex-1")}
+      />
+
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-      
         <select
-          aria-label="Filter by region"
-          value={region}
-          onChange={(e) => { setRegion(e.target.value); setPage(0); }}
-          className={cn(inputBase, "h-10 w-full sm:w-40")}
+          aria-label="Filter by provider"
+          value={fspId}
+          onChange={(e) => { setFspId(e.target.value); setPage(0); }}
+          className={cn(inputBase, "h-10 w-full sm:w-48")}
         >
-          <option value="">All regions</option>
-          {options.data?.regions.map((r) => <option key={r} value={r}>{r}</option>)}
+          <option value="">All providers</option>
+          {fsps.data?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+        <select
+          aria-label="Filter by district"
+          value={district}
+          onChange={(e) => { setDistrict(e.target.value); setPage(0); }}
+          className={cn(inputBase, "h-10 w-full sm:w-48")}
+        >
+          <option value="">All districts</option>
+          {options.data?.districts?.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
         {extraFilters.map((f) => (
           <select

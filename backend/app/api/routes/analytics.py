@@ -33,6 +33,8 @@ def data_filters(
     min_amount: Decimal | None = Query(None, ge=0),
     max_amount: Decimal | None = Query(None, ge=0),
     q: str | None = Query(None, max_length=100, description="Search organization name or short code"),
+    fsp_id: uuid.UUID | None = None,
+    district: str | None = None,
 ) -> DataFilters:
     if date_from and date_to and date_from > date_to:
         raise HTTPException(422, "date_from must be on or before date_to")
@@ -40,7 +42,7 @@ def data_filters(
         date_from=date_from, date_to=date_to, agent_shortcode=agent_shortcode, region=region,
         district_id=district_id, branch_id=branch_id, batch_id=batch_id, service_type=service_type,
         channel=channel, status=status_, before_level=before_level, after_level=after_level,
-        min_amount=min_amount, max_amount=max_amount, q=q,
+        min_amount=min_amount, max_amount=max_amount, q=q,fsp_id=fsp_id, district=district,
     )
 
 
@@ -99,6 +101,11 @@ def timeseries(
     if group_by and group_by not in svc.valid_dimensions(dataset):
         raise HTTPException(422, f"group_by must be one of {list(svc.valid_dimensions(dataset))}")
     return svc.timeseries(db, dataset, f, interval=interval, group_by=group_by)
+
+@router.get("/analytics/{dataset}/summary")
+def dataset_summary(dataset: Dataset, db: DbSession, _: CurrentUser, f: Filters):
+    """KPI box values for one dataset, with the previous equal-length period for % change."""
+    return svc.summary_with_previous(db, dataset, f)
 
 
 @router.get("/analytics/{dataset}/breakdown")

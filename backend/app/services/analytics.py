@@ -28,6 +28,21 @@ from app.models import (
 
 MAX_EXPORT_ROWS = 100_000
 
+# Commission measures (all summed from the snapshot columns stored on each row).
+_COMM = {
+    "fsp_commission": "fsp_commission_amount",
+    "agent_commission": "agent_commission_amount",
+    "ethiopost_commission": "ethiopost_commission_amount",
+}
+_COMM_EXPORT = (
+    "commission_status",
+    "fsp_commission_rate",
+    "fsp_commission_amount",
+    "agent_commission_rate",
+    "agent_commission_amount",
+    "ethiopost_commission_amount",
+)
+
 
 @dataclass(frozen=True)
 class DatasetSpec:
@@ -43,28 +58,33 @@ class DatasetSpec:
 SPECS: dict[Dataset, DatasetSpec] = {
     Dataset.TRANSACTIONS: DatasetSpec(
         AgentTransaction, "txn_date",
-        {"txn_count": "txn_count", "amount": "total_amount"},
-        ("service_type", "channel", "region", "txn_status"),
-        ("txn_date", "total_amount", "txn_count", "service_type", "agent_shortcode", "region", "created_at"),
+        {"txn_count": "txn_count", "amount": "total_amount", **_COMM},
+        ("service_type", "channel", "region", "txn_status", "commission_status"),
+        ("txn_date", "total_amount", "txn_count", "service_type", "agent_shortcode", "region", "created_at",
+         "fsp_commission_amount", "agent_commission_amount", "ethiopost_commission_amount"),
         ("txn_date", "agent_shortcode", "organization_name", "region", "service_type", "channel",
-         "txn_status", "debit_shortcode", "credit_shortcode", "txn_count", "total_amount", "failure_reason"),
+         "txn_status", "debit_shortcode", "credit_shortcode", "txn_count", "total_amount",
+         "failure_reason", *_COMM_EXPORT),
         status_attr="txn_status",
     ),
     Dataset.REGISTRATIONS: DatasetSpec(
         CustomerRegistration, "reg_date",
-        {"registrations": "registration_count"},
-        ("customer_status", "region"),
-        ("reg_date", "registration_count", "customer_status", "agent_shortcode", "region", "created_at"),
-        ("reg_date", "agent_shortcode", "organization_name", "region", "customer_status", "registration_count"),
+        {"registrations": "registration_count", **_COMM},
+        ("customer_status", "region", "commission_status"),
+        ("reg_date", "registration_count", "customer_status", "agent_shortcode", "region", "created_at",
+         "fsp_commission_amount", "agent_commission_amount", "ethiopost_commission_amount"),
+        ("reg_date", "agent_shortcode", "organization_name", "region", "customer_status",
+         "registration_count", *_COMM_EXPORT),
         status_attr="customer_status",
     ),
     Dataset.UPGRADES: DatasetSpec(
         CustomerUpgrade, "upgrade_date",
-        {"upgrades": "upgrade_count"},
-        ("before_level", "after_level", "region"),
-        ("upgrade_date", "upgrade_count", "before_level", "after_level", "agent_shortcode", "region", "created_at"),
+        {"upgrades": "upgrade_count", **_COMM},
+        ("before_level", "after_level", "region", "commission_status"),
+        ("upgrade_date", "upgrade_count", "before_level", "after_level", "agent_shortcode", "region",
+         "created_at", "fsp_commission_amount", "agent_commission_amount", "ethiopost_commission_amount"),
         ("upgrade_date", "agent_shortcode", "organization_name", "region", "upgrade_at",
-         "before_level", "after_level", "upgrade_count"),
+         "before_level", "after_level", "upgrade_count", *_COMM_EXPORT),
     ),
 }
 
@@ -86,6 +106,8 @@ class DataFilters:
     min_amount: Decimal | None = None  # transactions only
     max_amount: Decimal | None = None  # transactions only
     q: str | None = None  # free text on organization name / short code
+    fsp_id: uuid.UUID | None = None   # provider
+    district: str | None = None       # district name
 
 
 # --------------------------------------------------------------------------- query building
@@ -119,6 +141,10 @@ def _conditions(spec: DatasetSpec, f: DataFilters) -> list[ColumnElement[bool]]:
         c.append(Agent.district_id == f.district_id)
     if f.branch_id:
         c.append(Agent.branch_id == f.branch_id)
+    if f.fsp_id:
+        c.append(m.fsp_id == f.fsp_id)
+    if f.district:
+        c.append(District.name == f.district)    
     if f.batch_id:
         c.append(m.import_batch_id == f.batch_id)
     if f.q:
@@ -275,6 +301,12 @@ def filter_options(db: Session) -> dict[str, list[str]]:
         "customer_statuses": sorted(values(r, r.customer_status)),
         "before_levels": sorted(values(u, u.before_level)),
         "after_levels": sorted(values(u, u.after_level)),
+        "commission_statuses": sorted(
+            values(t, t.commission_status) | values(r, r.commission_status) | values(u, u.commission_status)
+        ),
+        "districts": sorted(
+            n for n in db.scalars(select(District.name).where(District.deleted_at.is_(None))) if n
+        ),
     }
 
 

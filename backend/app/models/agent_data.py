@@ -30,7 +30,38 @@ class AgentFactMixin:
     row_hash: Mapped[str] = mapped_column(String(64))
 
 
-class AgentTransaction(AgentFactMixin, BaseEntity):
+class CommissionSnapshotMixin:
+    """Commission as it was calculated at import time. Never recomputed.
+
+    fsp_id (from AgentFactMixin) + commission_rule_id + commission_rate_id say WHICH
+    rule/rate was used; the value columns say WHAT they were then. Rules and rates may
+    be edited or closed later; these columns still show the original calculation.
+
+    Example: amount 1000, FSP rule 2% -> fsp_commission_amount 20.00
+             CommissionRate 50%       -> agent 10.00, Ethio Post 10.00
+    """
+
+    commission_rule_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("commission_rules.id"), index=True)
+    commission_rate_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("commission_rates.id"), index=True)
+
+    # --- FSP side (snapshot of commission_rules) ---
+    fsp_commission_type: Mapped[str | None] = mapped_column(String(20))      # FLAT / PERCENT
+    fsp_commission_basis: Mapped[str | None] = mapped_column(String(30))    # txn_amount / fee_collected
+    fsp_commission_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    fsp_commission_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    # --- split (snapshot of commission_rates) ---
+    agent_commission_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))         # % of FSP commission
+    agent_commission_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    ethiopost_commission_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    # CALCULATED / NO_RULE / NO_AGENT_RATE / NEEDS_FEE / NO_BASE / NOT_ELIGIBLE
+    commission_status: Mapped[str | None] = mapped_column(String(20), index=True)
+
+
+class AgentTransaction(AgentFactMixin, CommissionSnapshotMixin, BaseEntity):
     __tablename__ = "agent_transactions"
     __table_args__ = (
         active_unique_index("uq_agent_transactions_fsp_row_hash_active", "fsp_id", "row_hash"),
@@ -47,13 +78,9 @@ class AgentTransaction(AgentFactMixin, BaseEntity):
     txn_count: Mapped[int] = mapped_column(Integer)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     failure_reason: Mapped[str | None] = mapped_column(String(255))
-    # Snapshot taken at import time. Never recomputed when the master rate changes.
-    commission_rate_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("commission_rates.id"), index=True)
-    commission_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))  # percent used
-    commission_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))  # total_amount * rate / 100
 
 
-class CustomerRegistration(AgentFactMixin, BaseEntity):
+class CustomerRegistration(AgentFactMixin, CommissionSnapshotMixin, BaseEntity):
     __tablename__ = "customer_registrations"
     __table_args__ = (
         active_unique_index("uq_customer_registrations_fsp_row_hash_active", "fsp_id", "row_hash"),
@@ -65,7 +92,7 @@ class CustomerRegistration(AgentFactMixin, BaseEntity):
     registration_count: Mapped[int] = mapped_column(Integer)
 
 
-class CustomerUpgrade(AgentFactMixin, BaseEntity):
+class CustomerUpgrade(AgentFactMixin, CommissionSnapshotMixin, BaseEntity):
     __tablename__ = "customer_upgrades"
     __table_args__ = (
         active_unique_index("uq_customer_upgrades_fsp_row_hash_active", "fsp_id", "row_hash"),

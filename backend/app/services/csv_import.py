@@ -35,7 +35,7 @@ from app.models import (
     ImportBatch,
 )
 from app.services import file_store
-from app.services.commission import apply_commission, rate_lookup
+from app.services.commission import apply_commission
 
 MAX_ERRORS = 50
 CHUNK = 1000
@@ -250,10 +250,9 @@ def import_csv(
         )
     fresh = [v for v in parsed if v["row_hash"] not in existing]
 
-    # Snapshot the commission rate in force right now. Runs after row_hash is computed,
-    # so a rate change never alters row identity.
-    if dataset == Dataset.TRANSACTIONS:
-        apply_commission(fresh, rate_lookup(db))
+       # Snapshot the FSP rule + agent split in force right now, for every dataset.
+    # Runs after row_hash is computed, so a rule/rate change never alters row identity.
+    apply_commission(db, dataset, fsp_id, fresh)
 
     agents = _agent_map(db, fsp_id)
     unmatched_codes = sorted({v["agent_shortcode"] for v in fresh if v["agent_shortcode"] not in agents})

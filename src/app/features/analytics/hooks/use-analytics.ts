@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type {
   AnalyticsFilters, BreakdownRow, DatasetKey, FilterOptions, Overview, Page, SeriesPoint,
   Transaction, Registration, Upgrade,
+  DatasetSummary,
 } from "../../../../lib/api/analytics-types";
 import { api, API_URL, ApiError } from "../../../../lib/api/client";
 import { useAuthStore } from "../../../../lib/auth/auth-store";
@@ -83,6 +84,15 @@ export function useRows<D extends DatasetKey>(
         query: { ...filters, ...paging },
         signal,
       }),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useSummary(dataset: DatasetKey, filters: AnalyticsFilters) {
+  return useQuery<DatasetSummary, ApiError>({
+    queryKey: ["analytics", dataset, "summary", clean(filters)] as const,
+    queryFn: ({ signal }) =>
+      api<DatasetSummary>(`/analytics/${dataset}/summary`, { query: filters, signal }),
     placeholderData: keepPreviousData,
   });
 }

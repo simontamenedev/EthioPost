@@ -2,9 +2,10 @@
 
 import { useMemo } from "react";
 import type { Column } from "../../../../components/ui/data-table";
-import type { Transaction } from "../../../../lib/api/analytics-types";import { formatBirr, formatInt } from "../const/format";
+import { formatBirr, formatInt } from "../const/format";
 import { ReportPage } from "../../analytics/components/reports";
-;
+import { commissionColumns } from "../../analytics/components/commission-columns";
+import { Transaction } from "../../../../lib/api/analytics-types";
 
 export function TransactionsView() {
   const columns = useMemo<Column<Transaction>[]>(
@@ -15,8 +16,12 @@ export function TransactionsView() {
         header: "Agent",
         cell: (t) => (
           <div>
-            <p className="font-semibold text-slate-900 dark:text-white">{t.organization_name.replace("Ethiopia Postal Service Enterprise ", "")}</p>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-white/60">{t.agent_shortcode} · {t.region ?? "—"}</p>
+            <p className="font-semibold text-slate-900 dark:text-white">
+              {t.organization_name.replace("Ethiopia Postal Service Enterprise ", "")}
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-white/60">
+              {t.agent_shortcode} · {t.region ?? "—"}
+            </p>
           </div>
         ),
       },
@@ -25,8 +30,7 @@ export function TransactionsView() {
       { key: "count", header: "Txns", cell: (t) => formatInt(t.txn_count) },
       { key: "amount", header: "Amount (ETB)", cell: (t) => formatBirr(t.total_amount) },
       { key: "status", header: "Status", cell: (t) => t.txn_status },
-      { key: "rate", header: "Rate", cell: (t) => (t.commission_rate == null ? "—" : `${Number(t.commission_rate)}%`) },
-{ key: "commission", header: "Commission (ETB)", cell: (t) => (t.commission_amount == null ? "—" : formatBirr(t.commission_amount)) },
+      ...commissionColumns<Transaction>(),
     ],
     [],
   );
@@ -35,7 +39,7 @@ export function TransactionsView() {
     <ReportPage
       dataset="transactions"
       title="Transactions"
-      description="Agent transaction volumes and values from the imported monitoring reports."
+      description="Agent transaction volumes, values and commission split from the imported monitoring reports."
       columns={columns}
       sortField="txn_date"
       extraFilters={[
