@@ -36,6 +36,9 @@ _COMM = {
 }
 _COMM_EXPORT = (
     "commission_status",
+    "fsp_commission_type",   # add this
+    "fsp_commission_rate",
+    "commission_status",
     "fsp_commission_rate",
     "fsp_commission_amount",
     "agent_commission_rate",

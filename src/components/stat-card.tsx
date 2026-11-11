@@ -10,7 +10,7 @@ type Props = {
   value: number;
   decimals?: number;
   unit?: string;
-  note: string;
+  note?: string;
   icon: LucideIcon;
   /** the headline metric: Post Finance Blue card with gold icon */
   hero?: boolean;

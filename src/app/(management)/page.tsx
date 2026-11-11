@@ -16,13 +16,13 @@ import { DateRange, presetRange } from "../features/analytics/lib/date-range";
 import type { OverallRow, TopRow } from "../../lib/api/analytics-types";
 
 const avg = (total: number, n: number) => (n > 0 ? total / n : 0);
-const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const shortName = (s: string) => s.replace("Ethiopia Postal Service Enterprise ", "");
 
 // Same shape the old Excel summaries had: { name, commission, records }.
 const toEntries = (rows: (OverallRow | TopRow)[] | undefined, short = false) =>
   (rows ?? []).map((r) => ({
-    name: short ? shortName(r.label) : r.label,
+    name: short ? shortName(r.key) : r.label,
     commission: r.ethiopost,
     records: r.records ?? 0,
   }));
@@ -99,37 +99,23 @@ export default function HomePage() {
               value={total}
               decimals={2}
               unit="ETB"
-              note={`Agents ${fmt(d.totals.agent_commission)} · FSPs paid ${fmt(d.totals.fsp_commission)} ETB`}
+              note={`Total commission ${fmt(d.totals.fsp_commission)} · Agents ${fmt(d.totals.agent_commission)} ETB`}
               icon={WalletCards}
             />
             <StatCard
               label="Agents"
               value={counts.agents}
-              note={
-                statsLoading
-                  ? "Loading…"
-                  : `active in period · ${fmt(stats?.agents.total ?? 0)} registered · avg ${fmt(avg(total, counts.agents))} ETB each`
-              }
               icon={BriefcaseBusiness}
             />
             <StatCard
               label="Branches"
-              value={counts.branches}
-              note={
-                statsLoading
-                  ? "Loading…"
-                  : `active in period · ${fmt(stats?.branches.total ?? 0)} registered · avg ${fmt(avg(total, counts.branches))} ETB per branch`
-              }
+              value={counts.branches}              
               icon={Building2}
             />
             <StatCard
               label="Districts"
               value={counts.districts}
-              note={
-                statsLoading
-                  ? "Loading…"
-                  : `active in period · ${fmt(stats?.districts.total ?? 0)} registered · avg ${fmt(avg(total, counts.districts))} ETB per district`
-              }
+              
               icon={MapPinned}
             />
             <StatCard
@@ -171,29 +157,12 @@ export default function HomePage() {
             </motion.div>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-3">
-            <motion.div variants={rise} className="xl:col-span-2">
-              <RankedBars title="Top branches" noun="branch" icon={Building2} entries={branches} total={total} />
-            </motion.div>
-            <motion.div variants={rise}>
-              <HighlightsCard
-                total={total}
-                leaders={[
-                  { label: "Top agent", name: agents[0]?.name, commission: agents[0]?.commission ?? 0, icon: BriefcaseBusiness },
-                  { label: "Top branch", name: branches[0]?.name, commission: branches[0]?.commission ?? 0, icon: Building2 },
-                  { label: "Top district", name: districts[0]?.name, commission: districts[0]?.commission ?? 0, icon: MapPinned },
-                ]}
-              />
-            </motion.div>
-          </div>
+
 
           {/* Financial service providers */}
           <div className="grid gap-5 xl:grid-cols-3">
             <motion.div variants={rise} className="xl:col-span-2">
               <RankedBars title="Top providers" noun="provider" icon={Trophy} entries={providers} total={total} />
-            </motion.div>
-            <motion.div variants={rise}>
-              <DistrictDonut entries={providers} total={total} />
             </motion.div>
           </div>
 

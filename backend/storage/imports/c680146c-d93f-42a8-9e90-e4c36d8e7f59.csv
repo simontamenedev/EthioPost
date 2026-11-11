@@ -1,0 +1,20 @@
+Date,Organization,Parent Organization,Organization Type,Debit short code,Credit short code,ET Region,Service Type,Channel,Status,Txn Count,Total Amount,Failure Reason
+11/2/2026,Ethiopia Postal Service Enterprise Mekele university endeyesus campus Branch 1,Ethiopia Postal Service Enterprise,agent,310004,CUSTOMER,NR,Cash In,API,COMPLETED,1,300,-
+11/2/2026,Ethiopia Postal Service Enterprise Shinile Branch 2,Ethiopia Postal Service Enterprise,agent,305784,CUSTOMER,ER,Cash In,API,COMPLETED,1,200,-
+11/2/2026,Ethiopia Postal Service Enterprise Sikela Branch 2,Ethiopia Postal Service Enterprise,agent,305792,CUSTOMER,SSWR,Cash In,API,COMPLETED,1,4000,-
+11/2/2026,Ethiopia Postal Service Enterprise Sikela Branch 2,Ethiopia Postal Service Enterprise,agent,305792,111222,SSWR,Airtime Top Up,API,COMPLETED,1,300,-
+11/2/2026,Ethiopia Postal Service Enterprise GPO 6,Ethiopia Postal Service Enterprise,agent,305798,CUSTOMER,NAAZ,Cash In,API,COMPLETED,1,40,-
+11/2/2026,Ethiopia Postal Service Enterprise  Komto Branch 1,Ethiopia Postal Service Enterprise,agent,306964,CUSTOMER,WR,Cash In,API,COMPLETED,1,30000,-
+11/2/2026,Ethiopia Postal Service Enterprise Erer Branch 1,Ethiopia Postal Service Enterprise,agent,306824,CUSTOMER,EER,Cash In,API,COMPLETED,1,10000,-
+11/2/2026,Ethiopia Postal Service Enterprise GPO Branch 222,Ethiopia Postal Service Enterprise,agent,CUSTOMER,449974,NAAZ,Cash Out,API,COMPLETED,1,32087.72,-
+11/2/2026,Ethiopia Postal Service Enterprise Gimbi Branch 1,Ethiopia Postal Service Enterprise,agent,306819,CUSTOMER,WR,Cash In,API,COMPLETED,1,1000,-
+11/2/2026,Ethiopia Postal Service Enterprise Kobo Branch 1,Ethiopia Postal Service Enterprise,agent,306825,CUSTOMER,ER,Cash In,API,COMPLETED,1,100,-
+11/2/2026,Ethiopia Postal Service Enterprise GPO Branch 3,Ethiopia Postal Service Enterprise,agent,CUSTOMER,305667,NAAZ,Cash Out,USSD,COMPLETED,1,2000,-
+11/2/2026,Ethiopia Postal Service Enterprise GPO 6,Ethiopia Postal Service Enterprise,agent,CUSTOMER,305798,NAAZ,Cash Out,API,COMPLETED,1,2000,-
+11/2/2026,Ethiopia Postal Service Enterprise Debeso Branch 1,Ethiopia Postal Service Enterprise,agent,306829,CUSTOMER,ER,Cash In,API,COMPLETED,1,5000,-
+11/2/2026,Ethiopia Postal Service Enterprise GPO Branch 222,Ethiopia Postal Service Enterprise,agent,CUSTOMER,449974,NAAZ,Cash Out,API,COMPLETED,1,1100,-
+11/2/2026,Ethiopia Postal Service Enterprise GPO Branch 208,Ethiopia Postal Service Enterprise,agent,CUSTOMER,449893,NAAZ,Cash Out,API,COMPLETED,1,1130,-
+11/2/2026,Ethiopia Postal Service Enterprise Jimma Branch 10,Ethiopia Postal Service Enterprise,agent,306962,CUSTOMER,SWR,Cash In,API,COMPLETED,1,2400,-
+11/2/2026,Ethiopia Postal Service Enterprise GPO Branch 230,Ethiopia Postal Service Enterprise,agent,CUSTOMER,449983,NAAZ,Cash Out,API,COMPLETED,1,1950,-
+11/2/2026,Ethiopia Postal Service Enterprise Limu Genet branch 1,Ethiopia Postal Service Enterprise,agent,305781,CUSTOMER,SWR,Cash In,API,COMPLETED,1,21300,-
+11/2/2026,Ethiopia Postal Service Enterprise GPO Branch 226,Ethiopia Postal Service Enterprise,agent,CUSTOMER,449979,NAAZ,Cash Out,API,COMPLETED,2,77335.88,-

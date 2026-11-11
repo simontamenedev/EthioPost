@@ -1,11 +1,15 @@
 """Commission calculation, snapshotted onto each imported row.
 
-Step 1  FSP commission = from CommissionRule (FLAT per txn, or PERCENT of amount)
-Step 2  Split          = from CommissionRate (agent % of the FSP commission;
-                         the remainder belongs to Ethio Post)
+Step 1  Commission pool = from CommissionRule (FLAT per txn, or PERCENT of amount).
+        This is what the FSP pays to Ethio Post. The FSP keeps the rest
+        (e.g. a 4% rule -> pool is 4% of the amount, FSP keeps 96%).
+Step 2  Split of the pool = from CommissionRate (agent % of the pool; remainder is
+        Ethio Post's). If no agent rate exists for the service, there is no agent
+        share: Ethio Post receives the whole pool.
 
-Example: amount 1000, FSP rule 2%  -> FSP pays 20.00
-         CommissionRate 50%        -> agent 10.00, Ethio Post 10.00
+Example: amount 1000, rule 4%  -> pool 40.00 (FSP keeps 960.00)
+         CommissionRate 50%    -> agent 20.00, Ethio Post 20.00
+         No CommissionRate     -> agent 0.00,  Ethio Post 40.00
 """
 from __future__ import annotations
 
@@ -141,11 +145,19 @@ class CommissionEngine:
             fsp_amount = _money(amount * rule.rate / HUNDRED)
         out["fsp_commission_amount"] = fsp_amount
 
-        # ---- step 2: split between agent and Ethio Post
+             # ---- step 2: split the pool between agent and Ethio Post
         rate = self.rates.get(service.strip().lower())
         if rate is None:
-            out["commission_status"] = "NO_AGENT_RATE"
+            # No agent share defined for this service: Ethio Post keeps the whole pool.
+            out.update(
+                commission_rate_id=None,
+                agent_commission_rate=Decimal("0"),
+                agent_commission_amount=Decimal("0.00"),
+                ethiopost_commission_amount=fsp_amount,
+                commission_status="CALCULATED",
+            )
             return out
+
         agent_amount = _money(fsp_amount * rate.rate / HUNDRED)
         out.update(
             commission_rate_id=rate.id,
@@ -204,6 +216,7 @@ def backfill_commission(
                 todo = or_(todo, status_col.in_(_UNRESOLVED))
 
             processed = calculated = 0
+
             last_id: uuid.UUID | None = None
             while True:
                 stmt = select(model).where(model.deleted_at.is_(None), todo)

@@ -11,45 +11,51 @@ const WARN = "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-3
 const STATUS_LABEL: Record<string, string> = {
   CALCULATED: "Calculated",
   NOT_ELIGIBLE: "Not eligible",
-  NO_RULE: "No FSP rule",
-  NO_AGENT_RATE: "No agent rate",
+  NO_RULE: "No commission rule",
+  NO_AGENT_RATE: "Legacy: no agent rate", // old rows only; the backend no longer produces it
   NEEDS_FEE: "Needs fee data",
   NO_BASE: "No amount",
 };
 
 const money = (v: string | number | null | undefined) => (v == null ? "—" : formatBirr(v));
 
+/** The rule is what Ethio Post earns: flat -> "8 ETB / txn", percent -> "1%". */
+function ruleLabel(type: string | null, rate: string | number | null): string | null {
+  if (rate == null) return null;
+  const n = Number(rate);
+  if (Number.isNaN(n)) return null;
+  return (type ?? "").toLowerCase() === "flat" ? `${n} ETB / txn` : `${n}%`;
+}
+
 export function commissionColumns<T extends CommissionSnapshot>(): Column<T>[] {
   return [
     {
-      key: "fsp_commission",
-      header: "FSP commission (ETB)",
-      cell: (r) => (
-        <div>
-          <p>{money(r.fsp_commission_amount)}</p>
-          {r.fsp_commission_rate != null && (
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-white/60">
-              {r.fsp_commission_type === "FLAT"
-                ? `${Number(r.fsp_commission_rate)} ETB flat`
-                : `${Number(r.fsp_commission_rate)}%`}
-            </p>
-          )}
-        </div>
-      ),
+      key: "commission",
+      header: "Commission (ETB)",
+      cell: (r) => {
+        const rule = ruleLabel(r.fsp_commission_type, r.fsp_commission_rate);
+        return (
+          <div>
+            <p>{money(r.fsp_commission_amount)}</p>
+            {rule && <p className="mt-0.5 text-xs text-slate-500 dark:text-white/60">{rule}</p>}
+          </div>
+        );
+      },
     },
     {
       key: "agent_commission",
       header: "Agent (ETB)",
-      cell: (r) => (
-        <div>
-          <p>{money(r.agent_commission_amount)}</p>
-          {r.agent_commission_rate != null && (
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-white/60">
-              {Number(r.agent_commission_rate)}% of FSP
-            </p>
-          )}
-        </div>
-      ),
+      cell: (r) => {
+        const pct = r.agent_commission_rate == null ? 0 : Number(r.agent_commission_rate);
+        return (
+          <div>
+            <p>{money(r.agent_commission_amount)}</p>
+            {pct > 0 && (
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-white/60">{pct}% of commission</p>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "ethiopost_commission",
@@ -58,7 +64,7 @@ export function commissionColumns<T extends CommissionSnapshot>(): Column<T>[] {
     },
     {
       key: "commission_status",
-      header: "Commission",
+      header: "Status",
       cell: (r) =>
         r.commission_status == null ? (
           "—"

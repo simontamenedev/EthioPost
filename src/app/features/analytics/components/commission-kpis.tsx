@@ -7,8 +7,10 @@ import { useSummary } from "../hooks/use-analytics";
 
 type Kpi = { key: string; label: string; money?: boolean; tone?: string };
 
+// fsp_commission is the total the FSP pays to Ethio Post (the rule amount).
+// It is then split into the agent's share and Ethio Post's share.
 const COMMISSION: Kpi[] = [
-  { key: "fsp_commission", label: "FSP commission", money: true },
+  { key: "fsp_commission", label: "Total commission", money: true },
   { key: "agent_commission", label: "Agents earn", money: true, tone: "text-emerald-600 dark:text-emerald-400" },
   { key: "ethiopost_commission", label: "Ethio Post earns", money: true, tone: "text-sky-600 dark:text-sky-400" },
 ];
