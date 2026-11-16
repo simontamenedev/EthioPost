@@ -13,7 +13,8 @@ export type FieldOption = { value: string; label: string };
 export type FieldConfig<T extends FieldValues> = {
   name: Path<T>;
   label: string;
- type?: "text" | "email" | "password" | "textarea" | "select" | "date";
+  /** "number" stores a real number (not a string); "multiselect" stores a string[] of option values. */
+  type?: "text" | "email" | "password" | "textarea" | "select" | "date" | "number" | "multiselect";
   placeholder?: string;
   hint?: string;
   autoComplete?: string;
@@ -73,6 +74,7 @@ export function EntityForm<T extends FieldValues>({
           } as const;
 
           const registration = register(field.name, {
+            ...(field.type === "number" ? { valueAsNumber: true as const } : {}),
             onChange: () => {
               for (const other of fields) {
                 if (other.resetOn === field.name) setValue(other.name, "" as PathValue<T, Path<T>>);
@@ -80,9 +82,17 @@ export function EntityForm<T extends FieldValues>({
             },
           });
 
+          const selected = (get(values, field.name) as string[] | undefined) ?? [];
+
           return (
-            <div key={field.name} className={cn(field.span === 2 || field.type === "textarea" ? "sm:col-span-2" : "")}>
-              <label htmlFor={id} className={labelClass}>{field.label}</label>
+            <div key={field.name} className={cn(field.span === 2 || field.type === "textarea" || field.type === "multiselect" ? "sm:col-span-2" : "")}>
+              <label
+                id={`${id}-label`}
+                htmlFor={field.type === "multiselect" ? undefined : id}
+                className={labelClass}
+              >
+                {field.label}
+              </label>
 
               {field.type === "textarea" ? (
                 <textarea
@@ -99,9 +109,40 @@ export function EntityForm<T extends FieldValues>({
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
+              ) : field.type === "multiselect" ? (
+                <div
+                  {...common}
+                  role="group"
+                  aria-labelledby={`${id}-label`}
+                  className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-white/15"
+                >
+                  {options.length === 0 && (
+                    <p className="text-xs text-slate-500 dark:text-white/60">No options available.</p>
+                  )}
+                  {options.map((o) => (
+                    <label key={o.value} className="flex cursor-pointer items-center gap-2 text-xs text-slate-800 dark:text-white">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(o.value)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...selected, o.value]
+                            : selected.filter((v) => v !== o.value);
+                          setValue(field.name, next as PathValue<T, Path<T>>, {
+                            shouldValidate: true,
+                            shouldDirty: true,
+                          });
+                        }}
+                        className="size-3.5 accent-[#2c317b]"
+                      />
+                      {o.label}
+                    </label>
+                  ))}
+                </div>
               ) : (
                 <input
                   type={field.type ?? "text"}
+                  step={field.type === "number" ? "any" : undefined}
                   placeholder={field.placeholder}
                   autoComplete={field.autoComplete ?? "off"}
                   {...common}

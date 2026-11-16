@@ -14,6 +14,7 @@ import { useDashboardOverview, useDashboardStats } from "../features/dashboard/h
 import { DateRangeFilter } from "../features/analytics/components/date-range-filter";
 import { DateRange, presetRange } from "../features/analytics/lib/date-range";
 import type { OverallRow, TopRow } from "../../lib/api/analytics-types";
+import { TargetAchievement } from "../../components/target-achievement";
 
 const avg = (total: number, n: number) => (n > 0 ? total / n : 0);
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -149,6 +150,9 @@ export default function HomePage() {
           </section>
 
           <div className="grid gap-5 xl:grid-cols-3">
+            <motion.div variants={rise}>
+  <TargetAchievement />
+</motion.div>
             <motion.div variants={rise} className="xl:col-span-2">
               <RankedBars title="Top agents" noun="agent" icon={BriefcaseBusiness} entries={agents} total={total} />
             </motion.div>

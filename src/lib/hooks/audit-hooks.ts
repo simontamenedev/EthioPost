@@ -8,7 +8,8 @@ export type AuditModel =
   | "Agent"
   | "FinancialServiceProvider"
   | "ServiceType"
-  | "CommissionRule";
+  | "CommissionRule"
+  | "ServiceTypeTarget"
 
 export const auditKeys = {
   all: ["audit-logs"] as const,

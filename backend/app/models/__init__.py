@@ -13,10 +13,12 @@ from app.models.commission_rate import CommissionRate  # legacy: flat % per serv
 from app.models.financial_service_provider import FinancialServiceProvider
 from app.models.service_type import ServiceType
 from app.models.commission_rule import CommissionRule
+from app.models.service_target import DistrictTarget,DistrictTargetMonth, ServiceTypeTarget, ServiceTypeTargetItem
 
 __all__ = [
     "Agent", "Branch", "District", "Status", "User", "UserRole", "AuditLog",
     "PasswordResetToken", "AgentTransaction", "CustomerRegistration", "CustomerUpgrade",
     "ImportBatch", "CommissionRate",
     "FinancialServiceProvider", "ServiceType", "CommissionRule",
+    "ServiceTypeTarget", "ServiceTypeTargetItem", "DistrictTarget","DistrictTargetMonth"
 ]

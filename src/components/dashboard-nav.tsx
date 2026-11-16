@@ -8,6 +8,7 @@ import {
   Percent,
   ReceiptText,
   Tags,
+  Target,
   UserCog,
   UserPlus,
   Users,
@@ -16,7 +17,7 @@ import {
 } from "lucide-react";
 
 export type NavKey =
-  | "overview" | "transactions" | "registrations" | "upgrades" | "imports" | "reports"
+  | "overview" | "transactions" | "registrations" | "upgrades" | "imports" | "reports" | "targets"
   | "districts" | "branches" | "agents"
   | "fsps" | "service-types" | "commission-rules"
   | "commission-rates" // legacy page, kept so existing `active` props still type-check
@@ -74,6 +75,7 @@ export const navSections: NavSection[] = [
       { label: "Commission rules", href: "/commission-rules", key: "commission-rules", icon: Percent },
       // Legacy flat-percent page. Remove once apply_commission uses commission rules.
       { label: "Commission rates (legacy)", href: "/commission-rates", key: "commission-rates", icon: Percent },
+      { label: "Annual targets", href: "/targets", key: "targets", icon: Target },
     ],
   },
   {

@@ -154,3 +154,99 @@ export type CommissionRuleFilters = { fsp_id?: string; service_type_id?: string 
 export type FspDetail = Fsp & { rule_count: number; import_count: number; audit?: AuditStamp | null };
 export type ServiceTypeDetail = ServiceType & { rule_count: number; audit?: AuditStamp | null };
 export type CommissionRuleDetail = CommissionRule & { audit?: AuditStamp | null };
+
+// lib/api/types.ts - append
+
+// lib/api/types.ts - append
+
+// ---- annual targets ----
+export type TargetServiceType = { id: string; code: string; name: string };
+
+export type ServiceTypeTarget = {
+  id: string;
+  name: string | null;
+  year: number;
+  target_value: string | number;        // Decimals arrive as strings
+  status: Status;
+  created_at: string;
+  updated_at: string;
+  service_types: TargetServiceType[];
+  allocated_value: string | number;
+  unallocated_value: string | number;
+  allocated_percent: string | number;
+  unallocated_percent: string | number;
+};
+
+export type DistrictTarget = {
+  phased_percent: string | number;
+  id: string;
+  district_id: string;
+  district: { id: string; name: string };
+  target_value: string | number;
+  target_percent: string | number;
+};
+
+export type ServiceTypeTargetDetail = ServiceTypeTarget & {
+  district_targets: DistrictTarget[];
+  audit?: AuditStamp | null;
+};
+
+export type ServiceTypeTargetPayload = {
+  name: string | null;
+  year: number;
+  target_value: number;
+  service_type_ids: string[];
+  status: Status;
+};
+/** The year cannot change after creation. */
+export type ServiceTypeTargetUpdatePayload = Partial<Omit<ServiceTypeTargetPayload, "year">> & {
+  keep_percentages?: boolean;
+};
+export type ServiceTypeTargetFilters = { year?: number; service_type_id?: string };
+
+export type DistrictAllocationMode = "value" | "percent" | "even";
+export type DistrictAllocationPayload = {
+  mode: DistrictAllocationMode;
+  allocations: { district_id: string; amount: number | null }[];
+};
+
+/** One row of the district allocation editor (every active district, 0 when unallocated). */
+export type DistrictAllocationRow = {
+  district_id: string;
+  district_name: string;
+  target_value: string | number;
+  target_percent: string | number;
+};
+
+export interface MonthTarget { month: number; percent: string | number; target_value: string | number }
+
+// on the item type of ServiceTypeTargetDetail.district_targets, add:
+//   phased_percent: string | number;
+//   monthly_targets: MonthTarget[];
+
+export interface MonthAllocationResponse {
+  district_id: string;
+  district_name: string;
+  target_value: string | number;
+  months: MonthTarget[];
+}
+export interface MonthAllocationPayload {
+  mode: "percent" | "even";
+  months: { month: number; percent: number }[];
+  apply_to_all_districts: boolean;
+}
+export interface MonthPerformance {
+  month: number; target_value: string | number; actual_value: string | number;
+  variance: string | number; achievement_percent: string | number | null;
+}
+export interface DistrictPerformance {
+  district_id: string; district_name: string; target_value: string | number;
+  actual_value: string | number; variance: string | number;
+  achievement_percent: string | number | null; months: MonthPerformance[];
+}
+export interface TargetPerformance {
+  target_id: string; name: string | null; year: number; metric: "amount" | "count";
+  target_value: string | number; allocated_value: string | number; actual_value: string | number;
+  achievement_percent: string | number | null; actual_outside_districts: string | number;
+  districts: DistrictPerformance[];
+}

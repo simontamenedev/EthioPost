@@ -9,6 +9,7 @@ import type {
 import { api, API_URL, ApiError } from "../../../../lib/api/client";
 import { useAuthStore } from "../../../../lib/auth/auth-store";
 import { LOGIN_PATH } from "../../../../lib/auth/constants";
+import { TargetPerformance } from "../../../../lib/api/types";
 
 /** Drop empty values so query keys are stable and `?region=` is never sent. */
 const clean = (f: object) =>
@@ -96,7 +97,15 @@ export function useSummary(dataset: DatasetKey, filters: AnalyticsFilters) {
     placeholderData: keepPreviousData,
   });
 }
-
+export function useTargetPerformance(id: string | undefined, metric: "amount" | "count" = "amount") {
+  return useQuery<TargetPerformance, ApiError>({
+    queryKey: ["service-type-targets", "performance", id, metric],
+    queryFn: ({ signal }) =>
+      api<TargetPerformance>(`/service-type-targets/${id}/performance`, { query: { metric }, signal }),
+    enabled: Boolean(id),
+    staleTime: 30_000,
+  });
+}
 export function useFilterOptions() {
   return useQuery<FilterOptions, ApiError>({
     queryKey: analyticsKeys.options,

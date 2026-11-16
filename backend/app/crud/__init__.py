@@ -1,6 +1,6 @@
 from app.crud.base import CRUDBase
 from app.models import Agent, AuditLog, Branch, District,CommissionRate, User,FinancialServiceProvider,ServiceType,CommissionRule
-from app.models import ImportBatch
+from app.models import ImportBatch, ServiceTypeTarget
 
 commission_rate_crud = CRUDBase(CommissionRate)
 import_batch_crud = CRUDBase(ImportBatch)
@@ -12,6 +12,7 @@ audit_log_crud = CRUDBase(AuditLog, audited=False)  # the log must not audit its
 fsp_crud = CRUDBase(FinancialServiceProvider)
 service_type_crud = CRUDBase(ServiceType)
 commission_rule_crud = CRUDBase(CommissionRule)
+service_type_target_crud = CRUDBase(ServiceTypeTarget)
 
 __all__ = [
     "CRUDBase",
@@ -23,5 +24,6 @@ __all__ = [
     "import_batch_crud",
     "fsp_crud",
     "service_type_crud",
-    "commission_rule_crud"
+    "commission_rule_crud",
+    "service_type_target_crud",
 ]
