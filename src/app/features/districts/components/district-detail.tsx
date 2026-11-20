@@ -12,6 +12,8 @@ export function DistrictDetailPanel({ id, onClose }: { id: string; onClose: () =
   const { data: d, isLoading, error } = useDistrict(id);
   const logs = useRecordAuditLogs("District", id, isAdmin);
 
+  const children = d?.children ?? [];
+
   return (
     <DetailPanel
       title={d?.name ?? "District"}
@@ -28,8 +30,24 @@ export function DistrictDetailPanel({ id, onClose }: { id: string; onClose: () =
         d
           ? [
               { label: "Status", value: <StatusBadge status={d.status} /> },
-              { label: "Branches", value: d.branch_count },
-              { label: "Agents", value: d.agent_count },
+              ...(d.parent_name ? [{ label: "Parent district", value: d.parent_name }] : []),
+              {
+                label: `Child districts (${children.length})`,
+                value: children.length ? (
+                  <ul className="space-y-1.5">
+                    {children.map((c) => (
+                      <li key={c.id} className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{c.name}</span>
+                        <StatusBadge status={c.status} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  "None"
+                ),
+              },
+              { label: children.length ? "Branches (incl. children)" : "Branches", value: d.branch_count },
+              { label: children.length ? "Agents (incl. children)" : "Agents", value: d.agent_count },
               { label: "Description", value: d.description },
               { label: "Created", value: formatDateTime(d.created_at) },
               { label: "Updated", value: formatDateTime(d.updated_at) },

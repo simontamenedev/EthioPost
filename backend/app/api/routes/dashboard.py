@@ -18,21 +18,24 @@ ACTIVE = Status("active")
 INACTIVE = Status("inactive")
 
 
-def _stat(db: DbSession, crud: CRUDBase, model) -> CountStat:
+def _stat(db: DbSession, crud: CRUDBase, model, *extra) -> CountStat:
     return CountStat(
-        total=crud.count(db),
-        active=crud.count(db, model.status == ACTIVE),
-        inactive=crud.count(db, model.status == INACTIVE),
+        total=crud.count(db, *extra),
+        active=crud.count(db, model.status == ACTIVE, *extra),
+        inactive=crud.count(db, model.status == INACTIVE, *extra),
     )
 
 
 @router.get("/stats", response_model=DashboardStats)
 def dashboard_stats(db: DbSession, _: CurrentUser) -> DashboardStats:
-    """Totals for the dashboard cards (soft-deleted records are excluded)."""
+    """Totals for the dashboard cards (soft-deleted records are excluded).
+
+    Districts counts parent districts only; the child districts (ET regions) sit under them.
+    """
     return DashboardStats(
         agents=_stat(db, agent_crud, Agent),
         branches=_stat(db, branch_crud, Branch),
-        districts=_stat(db, district_crud, District),
+        districts=_stat(db, district_crud, District, District.parent_id.is_(None)),
     )
 
 

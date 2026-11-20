@@ -4,11 +4,15 @@ import { createCrudHooks } from "../../../lib/api/crud-hooks";
 import type {
   DistrictAllocationPayload,
   DistrictAllocationRow,
+  PerformanceMetric,
+  PeriodTarget,
+  PeriodTargetInput,
   ServiceTypeTarget,
   ServiceTypeTargetDetail,
   ServiceTypeTargetFilters,
   ServiceTypeTargetPayload,
   ServiceTypeTargetUpdatePayload,
+  TargetPerformance,
 } from "../../../lib/api/types";
 import type { MonthAllocationPayload, MonthAllocationResponse } from "../../../lib/api/types";
 const targets = createCrudHooks<
@@ -73,5 +77,36 @@ export function useSetMonthTargets() {
       void queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
       return queryClient.invalidateQueries({ queryKey: targets.keys.all });
     },
+  });
+}
+
+/** Period targets of one target (shown in the collapsible row under it). */
+export function usePeriods(targetId: string | undefined, enabled = true) {
+  return useQuery<PeriodTarget[], ApiError>({
+    // Starts with the detail key, so invalidating the resource refreshes it too.
+    queryKey: [...targets.keys.detail(targetId ?? ""), "periods"],
+    queryFn: ({ signal }) => api<PeriodTarget[]>(`/service-type-targets/${targetId}/periods`, { signal }),
+    enabled: Boolean(targetId) && enabled,
+  });
+}
+
+export function useSetPeriods() {
+  const queryClient = useQueryClient();
+  return useMutation<PeriodTarget[], ApiError, { id: string; periods: PeriodTargetInput[] }>({
+    mutationFn: ({ id, periods }) =>
+      api<PeriodTarget[]>(`/service-type-targets/${id}/periods`, { method: "PUT", json: { periods } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
+      return queryClient.invalidateQueries({ queryKey: targets.keys.all });
+    },
+  });
+}
+
+export function useTargetPerformance(id: string | undefined, metric: PerformanceMetric, enabled = true) {
+  return useQuery<TargetPerformance, ApiError>({
+    queryKey: [...targets.keys.detail(id ?? ""), "performance", metric],
+    queryFn: ({ signal }) =>
+      api<TargetPerformance>(`/service-type-targets/${id}/performance?metric=${metric}`, { signal }),
+    enabled: Boolean(id) && enabled,
   });
 }

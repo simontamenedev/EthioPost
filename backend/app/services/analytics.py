@@ -3,6 +3,9 @@
 One registry (SPECS) describes each dataset; every function below is generic over it,
 so adding a fourth report type means adding one registry entry.
 All user-supplied column names are whitelisted through the registry (no raw SQL).
+
+Districts are a two-level tree. Agents (and therefore imported rows) belong to CHILD districts
+(ET regions); reports shown "by district" roll the children up into their PARENT district.
 """
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import ColumnElement, Select, asc, desc, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.datasets import Dataset
 from app.models import (
@@ -27,6 +30,17 @@ from app.models import (
 )
 
 MAX_EXPORT_ROWS = 100_000
+
+# The parent of the agent's district (NULL when the agent's district is itself top-level),
+# and a second alias used to collect "this district + its children" in subqueries.
+ParentDistrict = aliased(District, name="parent_district")
+DistrictScope = aliased(District, name="district_scope")
+
+
+def _district_rollup() -> ColumnElement:
+    """The parent district's name for an agent in a child district, else its own district."""
+    return func.coalesce(ParentDistrict.name, District.name, "Unassigned")
+
 
 # Commission measures (all summed from the snapshot columns stored on each row).
 _COMM = {
@@ -98,7 +112,7 @@ class DataFilters:
     date_to: date | None = None
     agent_shortcode: str | None = None
     region: str | None = None
-    district_id: uuid.UUID | None = None
+    district_id: uuid.UUID | None = None  # a parent also matches all of its children
     branch_id: uuid.UUID | None = None
     batch_id: uuid.UUID | None = None
     service_type: str | None = None  # transactions only
@@ -110,7 +124,7 @@ class DataFilters:
     max_amount: Decimal | None = None  # transactions only
     q: str | None = None  # free text on organization name / short code
     fsp_id: uuid.UUID | None = None   # provider
-    district: str | None = None       # district name
+    district: str | None = None       # district name (a parent name also matches its children)
 
 
 # --------------------------------------------------------------------------- query building
@@ -125,6 +139,7 @@ def _from(spec: DatasetSpec, stmt: Select) -> Select:
         .outerjoin(Agent, Agent.id == m.agent_id)
         .outerjoin(Branch, Branch.id == Agent.branch_id)
         .outerjoin(District, District.id == Agent.district_id)
+        .outerjoin(ParentDistrict, ParentDistrict.id == District.parent_id)
     )
 
 
@@ -141,13 +156,17 @@ def _conditions(spec: DatasetSpec, f: DataFilters) -> list[ColumnElement[bool]]:
     if f.region:
         c.append(m.region == f.region)
     if f.district_id:
-        c.append(Agent.district_id == f.district_id)
+        # the district itself plus its children, so a parent includes everything under it
+        scope = select(DistrictScope.id).where(
+            or_(DistrictScope.id == f.district_id, DistrictScope.parent_id == f.district_id)
+        )
+        c.append(Agent.district_id.in_(scope))
     if f.branch_id:
         c.append(Agent.branch_id == f.branch_id)
     if f.fsp_id:
         c.append(m.fsp_id == f.fsp_id)
     if f.district:
-        c.append(District.name == f.district)    
+        c.append(or_(District.name == f.district, ParentDistrict.name == f.district))
     if f.batch_id:
         c.append(m.import_batch_id == f.batch_id)
     if f.q:
@@ -183,7 +202,9 @@ def _dimension(spec: DatasetSpec, name: str) -> ColumnElement:
         return spec.model.agent_shortcode
     if name == "branch":
         return func.coalesce(Branch.name, "Unassigned")
-    if name == "district":
+    if name == "district":  # parent district: its children's figures are added up
+        return _district_rollup()
+    if name == "child_district":  # the agent's own district (ET region)
         return func.coalesce(District.name, "Unassigned")
     if name in spec.dimensions:
         return getattr(spec.model, name)
@@ -191,7 +212,7 @@ def _dimension(spec: DatasetSpec, name: str) -> ColumnElement:
 
 
 def valid_dimensions(ds: Dataset) -> tuple[str, ...]:
-    return ("agent", "branch", "district", *SPECS[ds].dimensions)
+    return ("agent", "branch", "district", "child_district", *SPECS[ds].dimensions)
 
 
 # --------------------------------------------------------------------------- reads
@@ -307,19 +328,26 @@ def filter_options(db: Session) -> dict[str, list[str]]:
         "commission_statuses": sorted(
             values(t, t.commission_status) | values(r, r.commission_status) | values(u, u.commission_status)
         ),
+        # parent districts only: filtering by one already includes its children
         "districts": sorted(
-            n for n in db.scalars(select(District.name).where(District.deleted_at.is_(None))) if n
+            n
+            for n in db.scalars(
+                select(District.name).where(
+                    District.deleted_at.is_(None), District.parent_id.is_(None)
+                )
+            )
+            if n
         ),
     }
 
 
 def export_rows(db: Session, ds: Dataset, f: DataFilters) -> tuple[list[str], list[tuple], bool]:
-    """Returns (headers, rows, truncated). Branch and district names are added to every export."""
+    """Returns (headers, rows, truncated). Branch and (parent) district names are added to every export."""
     spec = SPECS[ds]
     m = spec.model
     cols = [getattr(m, c) for c in spec.export_columns]
     stmt = (
-        _q(spec, select(*cols, Branch.name, District.name), f)
+        _q(spec, select(*cols, Branch.name, _district_rollup()), f)
         .order_by(getattr(m, spec.date_attr), m.agent_shortcode, m.id)
         .limit(MAX_EXPORT_ROWS + 1)
     )

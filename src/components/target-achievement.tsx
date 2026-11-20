@@ -61,7 +61,7 @@ export function TargetAchievement() {
             </select>
           )}
           <div role="group" aria-label="Measure" className="inline-flex rounded-lg border border-slate-200 p-0.5 dark:border-white/15">
-            {(["amount", "count"] as const).map((m) => (
+            {(["amount"] as const).map((m) => (
               <button
                 key={m}
                 type="button"

@@ -57,7 +57,10 @@ def list_service_types(
     if q:
         like = f"%{q}%"
         conditions.append(ServiceType.name.ilike(like) | ServiceType.code.ilike(like) | ServiceType.csv_label.ilike(like))
-    return service_type_crud.get_multi(db, *conditions, skip=skip, limit=limit)
+    return service_type_crud.get_multi(
+    db, *conditions, skip=skip, limit=limit,
+    order_by=(ServiceType.sort_order, ServiceType.name),
+     )
 
 
 @router.get("/{service_type_id}", response_model=ServiceTypeDetail)

@@ -14,11 +14,11 @@ from app.models.financial_service_provider import FinancialServiceProvider
 from app.models.service_type import ServiceType
 from app.models.commission_rule import CommissionRule
 from app.models.service_target import DistrictTarget,DistrictTargetMonth, ServiceTypeTarget, ServiceTypeTargetItem
-
+from app.models.service_target_period import ServiceTypeTargetPeriod
 __all__ = [
     "Agent", "Branch", "District", "Status", "User", "UserRole", "AuditLog",
     "PasswordResetToken", "AgentTransaction", "CustomerRegistration", "CustomerUpgrade",
     "ImportBatch", "CommissionRate",
     "FinancialServiceProvider", "ServiceType", "CommissionRule",
-    "ServiceTypeTarget", "ServiceTypeTargetItem", "DistrictTarget","DistrictTargetMonth"
+    "ServiceTypeTarget", "ServiceTypeTargetItem", "DistrictTarget","DistrictTargetMonth","ServiceTypeTargetPeriod"
 ]

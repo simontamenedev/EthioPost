@@ -1,5 +1,5 @@
 # app/models/service_type.py
-from sqlalchemy import String, Text
+from sqlalchemy import String, Text,Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base_model import BaseEntity, active_unique_index
@@ -20,3 +20,4 @@ class ServiceType(BaseEntity):
     name: Mapped[str] = mapped_column(String(100))
     csv_label: Mapped[str | None] = mapped_column(String(50), index=True)
     description: Mapped[str | None] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, server_default="100", index=True)

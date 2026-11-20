@@ -6,7 +6,7 @@ export const commissionRateSchema = z.object({
     .string()
     .trim()
     .refine((v) => v !== "" && !Number.isNaN(Number(v)) && Number(v) >= 0 && Number(v) <= 100, "Enter a rate between 0 and 100"),
-  service_types: z.string().trim().max(300, "Max 300 characters"),
+  service_type_ids: z.array(z.string()).min(1, "Select at least one service type"),
   remark: z.string().trim().max(500, "Max 500 characters"),
   status: z.enum(["active", "inactive"]),
 });

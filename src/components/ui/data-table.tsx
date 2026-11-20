@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Inbox, TriangleAlert } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
@@ -25,6 +25,8 @@ type DataTableProps<T> = {
   emptyHint?: string;
   /** Renders the right-hand actions cell; omit (or return null) for read-only tables. */
   renderActions?: (row: T) => ReactNode;
+  /** Return content to show a full-width row under `row`; return null/undefined while collapsed. */
+  renderExpanded?: (row: T) => ReactNode;
   page: number; // zero-based
   pageSize: number;
   hasNext: boolean;
@@ -35,7 +37,7 @@ const cellBase = "px-4 py-3.5 text-sm text-slate-700 dark:text-white/80";
 
 export function DataTable<T>({
   columns, rows, getRowId, isLoading, isError, errorMessage, onRetry,
-  emptyTitle = "Nothing here yet", emptyHint, renderActions, page, pageSize, hasNext, onPageChange,
+  emptyTitle = "Nothing here yet", emptyHint, renderActions, renderExpanded, page, pageSize, hasNext, onPageChange,
 }: DataTableProps<T>) {
   const hasActions = Boolean(renderActions);
   const colSpan = columns.length + (hasActions ? 1 : 0);
@@ -59,7 +61,7 @@ export function DataTable<T>({
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={`sk-${i}`} aria-hidden>
                   {Array.from({ length: colSpan }).map((__, j) => (
-                    <td key={j} className="px-4 py-4"><div className="h-4 w-full max-w-[160px] animate-pulse rounded bg-slate-200 dark:bg-white/10" /></td>
+                    <td key={j} className="px-4 py-4"><div className="h-4 w-full max-w-[160px] animate-pulse  bg-slate-200 dark:bg-white/10" /></td>
                   ))}
                 </tr>
               ))}
@@ -85,14 +87,24 @@ export function DataTable<T>({
               </tr>
             )}
 
-            {!isLoading && !isError && rows?.map((row) => (
-              <tr key={getRowId(row)} className="transition-colors  dark:hover:bg-white/5">
-                {columns.map((c) => (
-                  <td key={c.key} className={cn(cellBase, c.className)}>{c.cell(row)}</td>
-                ))}
-                {hasActions && <td className={cn(cellBase, "text-right")}>{renderActions?.(row)}</td>}
-              </tr>
-            ))}
+            {!isLoading && !isError && rows?.map((row) => {
+              const expanded = renderExpanded?.(row);
+              return (
+                <Fragment key={getRowId(row)}>
+                  <tr className="transition-colors  dark:hover:bg-white/5">
+                    {columns.map((c) => (
+                      <td key={c.key} className={cn(cellBase, c.className)}>{c.cell(row)}</td>
+                    ))}
+                    {hasActions && <td className={cn(cellBase, "text-right")}>{renderActions?.(row)}</td>}
+                  </tr>
+                  {expanded && (
+                    <tr className="bg-slate-50/60 dark:bg-white/[0.03]">
+                      <td colSpan={colSpan} className="px-4 py-4">{expanded}</td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

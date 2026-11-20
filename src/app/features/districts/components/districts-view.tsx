@@ -1,13 +1,20 @@
 "use client";
 
-
+import { useMemo } from "react";
 import { StatusBadge } from "../../../../components/ui/badge";
-import { Column } from "../../../../components/ui/data-table";
+import type { Column } from "../../../../components/ui/data-table";
+import type { FieldConfig } from "../../../../components/ui/entity-form";
 import { ResourceManager } from "../../../../components/ui/resource-manager";
 import { District, DistrictPayload } from "../../../../lib/api/types";
 import { STATUS_OPTIONS } from "../../../../lib/options";
 import { formatDate } from "../../../../lib/utils";
-import { useCreateDistrict, useDeleteDistrict, useDistricts, useUpdateDistrict } from "../hooks";
+import {
+  useCreateDistrict,
+  useDeleteDistrict,
+  useParentDistrictOptions,
+  useParentDistricts,
+  useUpdateDistrict,
+} from "../hooks";
 import { districtSchema, type DistrictFormValues } from "../schema";
 import { DistrictDetailPanel } from "./district-detail";
 
@@ -29,6 +36,7 @@ const columns: Column<District>[] = [
 const toPayload = (v: DistrictFormValues): DistrictPayload => ({
   name: v.name,
   description: v.description || null,
+  parent_id: v.parent_id || null,
   status: v.status,
 });
 
@@ -36,31 +44,50 @@ export function DistrictsView() {
   const create = useCreateDistrict();
   const update = useUpdateDistrict();
   const remove = useDeleteDistrict();
+  const parentOptions = useParentDistrictOptions();
+
+  const fields = useMemo<FieldConfig<DistrictFormValues>[]>(
+    () => [
+      { name: "name", label: "Name", placeholder: "e.g. Addis Ababa District" },
+      {
+        name: "parent_id",
+        label: "Parent district",
+        type: "select",
+        options: parentOptions,
+        placeholder: "None (top-level district)",
+        hint: "Leave empty for an Ethio Post district. Pick one to create a child (Ethio Telecom region).",
+      },
+      { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, placeholder: "Select status" },
+      { name: "description", label: "Description", type: "textarea", placeholder: "Optional notes" },
+    ],
+    [parentOptions],
+  );
 
   return (
     <ResourceManager<District, DistrictFormValues, DistrictPayload, Partial<DistrictPayload>>
       title="Districts"
-      description="Top-level regions that branches and agents belong to."
+      description="Parent districts. Open one to see the child districts (regions) under it."
       singular="district"
       searchPlaceholder="Search districts…"
       columns={columns}
-      useList={useDistricts}
+      useList={useParentDistricts}
       createMutation={create}
       updateMutation={update}
       deleteMutation={remove}
       createSchema={districtSchema}
-      fields={[
-        { name: "name", label: "Name", placeholder: "e.g. Addis Ababa" },
-        { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, placeholder: "Select status" },
-        { name: "description", label: "Description", type: "textarea", placeholder: "Optional notes" },
-      ]}
-      emptyValues={{ name: "", description: "", status: "active" }}
-      toFormValues={(d) => ({ name: d.name, description: d.description ?? "", status: d.status })}
+      fields={fields}
+      emptyValues={{ name: "", description: "", parent_id: "", status: "active" }}
+      toFormValues={(d) => ({
+        name: d.name,
+        description: d.description ?? "",
+        parent_id: d.parent_id ?? "",
+        status: d.status,
+      })}
       toCreatePayload={toPayload}
       toUpdatePayload={toPayload}
       rowLabel={(d) => d.name}
       modalSize="md"
-            renderDetail={(row, close) => <DistrictDetailPanel key={row.id} id={row.id} onClose={close} />}
+      renderDetail={(row, close) => <DistrictDetailPanel key={row.id} id={row.id} onClose={close} />}
     />
   );
 }

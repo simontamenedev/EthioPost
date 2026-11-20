@@ -1,5 +1,5 @@
 from app.crud.base import CRUDBase
-from app.models import Agent, AuditLog, Branch, District,CommissionRate, User,FinancialServiceProvider,ServiceType,CommissionRule
+from app.models import Agent, AuditLog, Branch, District,CommissionRate, User,FinancialServiceProvider,ServiceType,CommissionRule,ServiceTypeTargetPeriod
 from app.models import ImportBatch, ServiceTypeTarget
 
 commission_rate_crud = CRUDBase(CommissionRate)
@@ -13,6 +13,7 @@ fsp_crud = CRUDBase(FinancialServiceProvider)
 service_type_crud = CRUDBase(ServiceType)
 commission_rule_crud = CRUDBase(CommissionRule)
 service_type_target_crud = CRUDBase(ServiceTypeTarget)
+service_type_target_period_crud = CRUDBase(ServiceTypeTargetPeriod)
 
 __all__ = [
     "CRUDBase",

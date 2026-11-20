@@ -1,4 +1,8 @@
-"""Ethio Post dashboard: one date range, every number from the stored commission snapshots."""
+"""Ethio Post dashboard: one date range, every number from the stored commission snapshots.
+
+"District" here means the PARENT district: agents belong to child districts (ET regions)
+and their figures are added up under the parent.
+"""
 from __future__ import annotations
 
 import uuid
@@ -6,11 +10,13 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import desc, func, literal_column, select, union_all
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.datasets import Dataset
 from app.models import Agent, Branch, District, FinancialServiceProvider
 from app.services.analytics import SPECS, DataFilters, previous_period
+
+ParentDistrict = aliased(District, name="parent_district")
 
 _ZERO = literal_column("0")
 _NAMES = ("fsp_id", "agent_id", "agent_shortcode", "organization_name", "day",
@@ -31,6 +37,11 @@ def _row(r) -> dict[str, Any]:
 
 def _sum(col):
     return func.coalesce(func.sum(col), 0)
+
+
+def _parent_name():
+    """Parent district name for an agent in a child district, else its own district."""
+    return func.coalesce(ParentDistrict.name, District.name, "Unassigned")
 
 
 def _facts(f: DataFilters):
@@ -81,14 +92,18 @@ def _totals(db: Session, facts) -> dict[str, Any]:
 
 
 def _active_entities(db: Session, facts) -> dict[str, int]:
-    """Branches/districts that had activity in the period (linked agents only)."""
+    """Branches and parent districts that had activity in the period (linked agents only)."""
     linked = select(facts.c.agent_id).where(facts.c.agent_id.is_not(None)).distinct()
     row = db.execute(
         select(
             func.count(Agent.id),
             func.count(func.distinct(Agent.branch_id)),
-            func.count(func.distinct(Agent.district_id)),
-        ).where(Agent.id.in_(linked))
+            func.count(func.distinct(func.coalesce(ParentDistrict.id, Agent.district_id))),
+        )
+        .select_from(Agent)
+        .outerjoin(District, District.id == Agent.district_id)
+        .outerjoin(ParentDistrict, ParentDistrict.id == District.parent_id)
+        .where(Agent.id.in_(linked))
     ).one()
     return {"linked_agents": row[0], "branches": row[1], "districts": row[2]}
 
@@ -117,7 +132,7 @@ def _by_fsp(db: Session, facts) -> list[dict[str, Any]]:
 
 
 def _top_per_fsp(db: Session, facts, *, by: str, n: int) -> list[dict[str, Any]]:
-    """Top-n agents or districts per provider, ranked by Ethio Post commission."""
+    """Top-n agents or parent districts per provider, ranked by Ethio Post commission."""
     if by == "agent":
         key = facts.c.agent_shortcode
         base = select(
@@ -125,12 +140,13 @@ def _top_per_fsp(db: Session, facts, *, by: str, n: int) -> list[dict[str, Any]]
             func.max(facts.c.organization_name).label("label"),
         ).select_from(facts)
     else:
-        key = func.coalesce(District.name, "Unassigned")
+        key = _parent_name()
         base = (
             select(facts.c.fsp_id.label("fsp_id"), key.label("key"), key.label("label"))
             .select_from(facts)
             .outerjoin(Agent, Agent.id == facts.c.agent_id)
             .outerjoin(District, District.id == Agent.district_id)
+            .outerjoin(ParentDistrict, ParentDistrict.id == District.parent_id)
         )
 
     grouped = (
@@ -154,24 +170,29 @@ def _top_per_fsp(db: Session, facts, *, by: str, n: int) -> list[dict[str, Any]]
 
 
 def _top_overall(db: Session, facts, *, by: str, n: int) -> list[dict[str, Any]]:
-    """Top-n agents / branches / districts across all providers, by Ethio Post commission."""
+    """Top-n agents / branches / parent districts across all providers, by Ethio Post commission."""
     if by == "agent":
         key = facts.c.agent_shortcode
         base = select(
             key.label("key"), func.max(facts.c.organization_name).label("label")
         ).select_from(facts)
-    else:
-        model = Branch if by == "branch" else District
-        key = func.coalesce(model.name, "Unassigned")
+    elif by == "branch":
+        key = func.coalesce(Branch.name, "Unassigned")
         base = (
             select(key.label("key"), key.label("label"))
             .select_from(facts)
             .outerjoin(Agent, Agent.id == facts.c.agent_id)
+            .outerjoin(Branch, Branch.id == Agent.branch_id)
         )
-        if by == "branch":
-            base = base.outerjoin(Branch, Branch.id == Agent.branch_id)
-        else:
-            base = base.outerjoin(District, District.id == Agent.district_id)
+    else:  # district: children are added up under their parent
+        key = _parent_name()
+        base = (
+            select(key.label("key"), key.label("label"))
+            .select_from(facts)
+            .outerjoin(Agent, Agent.id == facts.c.agent_id)
+            .outerjoin(District, District.id == Agent.district_id)
+            .outerjoin(ParentDistrict, ParentDistrict.id == District.parent_id)
+        )
 
     stmt = (
         base.add_columns(

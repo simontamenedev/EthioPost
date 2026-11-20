@@ -38,6 +38,16 @@
   --color-pf-night-3: #1d2170;
 
   --font-sans: "Archivo", "Noto Sans Ethiopic", system-ui, sans-serif;
+
+  /* Sharp corners everywhere: every rounded-* utility resolves to 0 */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
 }
 
 :root {
@@ -64,6 +74,14 @@ body {
   color: var(--foreground);
   /* Archivo for English, Noto Sans Ethiopic picks up Amharic glyphs */
   font-family: var(--font-sans);
+}
+
+/* Always sharp rectangles: also covers rounded-full, rounded-[..] and pseudo-elements.
+   Unlayered, so it beats Tailwind utilities without needing !important. */
+*,
+*::before,
+*::after {
+  border-radius: 0;
 }
 
 /*
@@ -96,14 +114,14 @@ body {
     color: inherit;
   }
 
-  /* Slim scrollbars (WebKit) that match both themes */
+  /* Slim, square scrollbars (WebKit) that match both themes */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
   ::-webkit-scrollbar-thumb {
     background-color: #cbd5e1;
-    border-radius: 9999px;
+    border-radius: 0;
     border: 2px solid transparent;
     background-clip: content-box;
   }

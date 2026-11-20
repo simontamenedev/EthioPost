@@ -17,6 +17,7 @@ const toPayload = (v: ServiceTypeFormValues): ServiceTypePayload => ({
   csv_label: v.csv_label || null,
   description: v.description || null,
   status: v.status,
+  sort_order: Number(v.sort_order),
 });
 
 export function ServiceTypesView() {
@@ -26,6 +27,7 @@ export function ServiceTypesView() {
 
   const columns = useMemo<Column<ServiceType>[]>(
     () => [
+      { key: "sort_order", header: "#", cell: (r) => <span className="font-mono text-xs">{r.sort_order}</span> },
       {
         key: "name",
         header: "Service",
@@ -37,12 +39,12 @@ export function ServiceTypesView() {
         ),
       },
       { key: "code", header: "Code", cell: (r) => <span className="font-mono text-xs">{r.code}</span> },
-      {
-        key: "csv",
-        header: "CSV service type",
-        cell: (r) =>
-          r.csv_label ? <Badge tone="blue">{r.csv_label}</Badge> : <span className="text-slate-400 dark:text-white/40">Not in reports</span>,
-      },
+      // {
+      //   key: "csv",
+      //   header: "CSV service type",
+      //   cell: (r) =>
+      //     r.csv_label ? <Badge tone="blue">{r.csv_label}</Badge> : <span className="text-slate-400 dark:text-white/40">Not in reports</span>,
+      // },
       { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
     ],
     [],
@@ -60,6 +62,12 @@ export function ServiceTypesView() {
       },
       { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, placeholder: "Select status" },
       { name: "description", label: "Description", type: "textarea", placeholder: "Optional notes" },
+      {
+  name: "sort_order",
+  label: "Sort order",
+  type: "number",
+  hint: "Lower numbers are shown first. 100 means not ordered.",
+},
     ],
     [],
   );
@@ -77,9 +85,9 @@ export function ServiceTypesView() {
       deleteMutation={remove}
       createSchema={serviceTypeSchema}
       fields={fields}
-      emptyValues={{ code: "", name: "", csv_label: "", description: "", status: "active" }}
+      emptyValues={{ code: "", name: "", csv_label: "", description: "", status: "active",sort_order: 100  }}
       toFormValues={(r) => ({
-        code: r.code, name: r.name, csv_label: r.csv_label ?? "", description: r.description ?? "", status: r.status,
+        code: r.code, name: r.name, csv_label: r.csv_label ?? "", description: r.description ?? "", status: r.status,sort_order: r.sort_order,
       })}
       toCreatePayload={toPayload}
       toUpdatePayload={toPayload}

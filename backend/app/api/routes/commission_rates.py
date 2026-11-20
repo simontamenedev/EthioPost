@@ -9,13 +9,33 @@ from app.core.enums import Status
 from app.crud import commission_rate_crud
 from app.models import CommissionRate
 from app.schemas.commission_rate import CommissionRateCreate, CommissionRateRead, CommissionRateUpdate
-
+from sqlalchemy import select
+from app.models import ServiceType
+from app.models.commission_rate import commission_rate_service_types as link
 router = APIRouter(prefix="/commission-rates", tags=["commission-rates"])
 
 
-def _clean_types(types: list[str] | None) -> list[str] | None:
-    cleaned = [" ".join(t.split()) for t in (types or []) if t.strip()]
-    return cleaned or None
+def _resolve_service_types(db, ids: list[uuid.UUID]) -> list[ServiceType]:
+    ids = list(dict.fromkeys(ids))  # de-dupe, keep order
+    found = list(db.scalars(select(ServiceType).where(ServiceType.id.in_(ids), ServiceType.deleted_at.is_(None))))
+    if len(found) != len(ids):
+        raise conflict("One or more selected service types do not exist")
+    return found
+
+
+def _ensure_types_free(db, types: list[ServiceType], exclude_id: uuid.UUID | None = None) -> None:
+    q = (
+        select(ServiceType.name, CommissionRate.service_name)
+        .join(link, link.c.service_type_id == ServiceType.id)
+        .join(CommissionRate, CommissionRate.id == link.c.commission_rate_id)
+        .where(ServiceType.id.in_([t.id for t in types]), CommissionRate.deleted_at.is_(None))
+    )
+    if exclude_id:
+        q = q.where(CommissionRate.id != exclude_id)
+    clashes = db.execute(q).all()
+    if clashes:
+        detail = "; ".join(f"“{t}” is already in “{r}”" for t, r in clashes)
+        raise conflict(f"A service type can belong to only one commission rate: {detail}")
 
 
 def _ensure_unique_name(db, name: str, exclude_id: uuid.UUID | None = None) -> None:
@@ -51,9 +71,11 @@ def get_commission_rate(rate_id: uuid.UUID, db: DbSession, _: CurrentUser) -> Co
 @router.post("", response_model=CommissionRateRead, status_code=status.HTTP_201_CREATED)
 def create_commission_rate(payload: CommissionRateCreate, db: DbSession, admin: AdminUser) -> CommissionRate:
     _ensure_unique_name(db, payload.service_name)
-    data = payload.model_dump()
+    types = _resolve_service_types(db, payload.service_type_ids)
+    _ensure_types_free(db, types)
+    data = payload.model_dump(exclude={"service_type_ids"})
     data["service_name"] = " ".join(data["service_name"].split())
-    data["service_types"] = _clean_types(data["service_types"])
+    data["service_types"] = types
     return commission_rate_crud.create(db, data, actor_id=admin.id)
 
 
@@ -62,12 +84,14 @@ def update_commission_rate(
     rate_id: uuid.UUID, payload: CommissionRateUpdate, db: DbSession, admin: AdminUser
 ) -> CommissionRate:
     rate = get_or_404(commission_rate_crud, db, rate_id, "Commission rate")
-    data = payload.model_dump(exclude_unset=True)
-    if "service_name" in data and data["service_name"]:
+    data = payload.model_dump(exclude_unset=True, exclude={"service_type_ids"})
+    if data.get("service_name"):
         data["service_name"] = " ".join(data["service_name"].split())
         _ensure_unique_name(db, data["service_name"], exclude_id=rate.id)
-    if "service_types" in data:
-        data["service_types"] = _clean_types(data["service_types"])
+    if payload.service_type_ids is not None:
+        types = _resolve_service_types(db, payload.service_type_ids)
+        _ensure_types_free(db, types, exclude_id=rate.id)
+        data["service_types"] = types
     return commission_rate_crud.update(db, rate, data, actor_id=admin.id)
 
 

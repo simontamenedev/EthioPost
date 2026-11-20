@@ -1,6 +1,6 @@
 # app/schemas/service_type_target.py
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -29,27 +29,43 @@ class DistrictRef(_ORM):
 # ---- targets ---------------------------------------------------------------
 class TargetCreate(BaseModel):
     name: str | None = Field(None, max_length=150)
-    year: int = Field(ge=2000, le=2100)
+    start_date: date
+    end_date: date
     target_value: Decimal = Money
     service_type_ids: list[uuid.UUID] = Field(min_length=1)
     status: Status = Status.ACTIVE
 
+    @model_validator(mode="after")
+    def _dates_in_order(self) -> "TargetCreate":
+        if self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
+
 
 class TargetUpdate(BaseModel):
-    """The year is fixed after creation; create a new target for another year."""
+    """Dates can be changed; the service checks overlaps and existing periods."""
 
     name: str | None = Field(None, max_length=150)
+    start_date: date | None = None
+    end_date: date | None = None
     target_value: Decimal | None = Field(None, ge=0, max_digits=18, decimal_places=2)
     service_type_ids: list[uuid.UUID] | None = Field(None, min_length=1)
     status: Status | None = None
     # When target_value changes: scale district shares with it (True) or keep their values (False).
     keep_percentages: bool = True
 
+    @model_validator(mode="after")
+    def _dates_in_order(self) -> "TargetUpdate":
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
+
 
 class TargetRead(_ORM):
     id: uuid.UUID
     name: str | None
-    year: int
+    start_date: date
+    end_date: date
     target_value: Decimal
     status: Status
     created_at: datetime
@@ -60,10 +76,12 @@ class TargetRead(_ORM):
     allocated_percent: Decimal
     unallocated_percent: Decimal
 
+
 class MonthTargetRead(BaseModel):
     month: int
     percent: Decimal
     target_value: Decimal
+
 
 class DistrictTargetRead(_ORM):
     id: uuid.UUID
@@ -111,18 +129,6 @@ class DistrictAllocationRow(BaseModel):
     target_percent: Decimal
 
 
-
-
-class DistrictTargetRead(_ORM):
-    id: uuid.UUID
-    district_id: uuid.UUID
-    district: DistrictRef
-    target_value: Decimal
-    target_percent: Decimal
-    phased_percent: Decimal                      # new
-    monthly_targets: list[MonthTargetRead] = []  # new
-
-
 # ---- monthly phasing -------------------------------------------------------
 class MonthPercentItem(BaseModel):
     month: int = Field(ge=1, le=12)
@@ -155,8 +161,10 @@ class MonthAllocationResponse(BaseModel):
     district_id: uuid.UUID
     district_name: str
     target_value: Decimal
-    months: list[MonthTargetRead]    
+    months: list[MonthTargetRead]
 
+
+# ---- performance -----------------------------------------------------------
 class MonthPerformance(BaseModel):
     month: int
     target_value: Decimal
@@ -178,11 +186,76 @@ class DistrictPerformance(BaseModel):
 class TargetPerformance(BaseModel):
     target_id: uuid.UUID
     name: str | None
-    year: int
+    start_date: date
+    end_date: date
     metric: Literal["amount", "count"]
-    target_value: Decimal                   # national annual target
+    target_value: Decimal                   # national target for the whole date range
     allocated_value: Decimal                # sum of district targets
     actual_value: Decimal                   # districts that have a share
     achievement_percent: Decimal | None
     actual_outside_districts: Decimal       # actual in districts with no share
     districts: list[DistrictPerformance]
+
+
+# ---- legacy month input (not used by the current routes) -------------------
+class MonthTargetIn(BaseModel):
+    month: int = Field(ge=1, le=12)
+    target_value: Decimal = Field(ge=0, max_digits=18, decimal_places=2)
+
+
+class MonthTargetsPut(BaseModel):
+    months: list[MonthTargetIn]   # the full list; months not listed are cleared
+
+
+# ---- period targets --------------------------------------------------------
+class PeriodTargetIn(BaseModel):
+    id: uuid.UUID | None = None          # send it to update an existing period
+    start_date: date
+    end_date: date
+    target_value: Decimal = Field(ge=0, max_digits=18, decimal_places=2)
+
+    @model_validator(mode="after")
+    def _dates_in_order(self) -> "PeriodTargetIn":
+        if self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
+
+
+class PeriodTargetsPut(BaseModel):
+    periods: list[PeriodTargetIn]        # the full list; periods not listed are removed
+
+
+class PeriodTargetRead(BaseModel):
+    id: uuid.UUID
+    start_date: date
+    end_date: date
+    days: int
+    target_value: Decimal
+    percent: Decimal
+
+
+class ServiceTypeTargetRead(BaseModel):
+    """Target with its period breakdown."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str | None
+    start_date: date
+    end_date: date
+    target_value: Decimal
+    service_types: list[ServiceTypeRef]
+
+    allocated_value: Decimal
+    unallocated_value: Decimal
+    allocated_percent: Decimal
+    unallocated_percent: Decimal
+
+    # periods
+    period_targets: list[PeriodTargetRead] = []
+    phased_value: Decimal
+    unphased_value: Decimal
+    phased_percent: Decimal
+
+    created_at: datetime
+    updated_at: datetime

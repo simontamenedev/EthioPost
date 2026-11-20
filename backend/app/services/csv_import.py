@@ -344,10 +344,11 @@ def _orphan_locations(
 def relink_agents(
     db: Session, *, actor_id: uuid.UUID, fsp_id: uuid.UUID
 ) -> dict[str, dict[str, int]]:
-    """Link one provider's imported rows to agents. Agents, branches (organizations) and
-    districts (regions) that don't exist yet are created first. Everything commits together
-    or not at all."""
-    created = {"districts": 0, "branches": 0, "agents": 0}
+    """Link one provider's imported rows to agents. Missing parent districts (organizations),
+    child districts (ET regions), branches and agents are created first. Region names are
+    unique, so a region that already exists (e.g. from the Ethio Post alignment seed) is reused
+    under its current parent. Everything commits together or not at all."""
+    created = {"parent_districts": 0, "districts": 0, "branches": 0, "agents": 0}
     linked: dict[str, int] = {}
     try:
         agents = _agent_map(db, fsp_id)
@@ -355,40 +356,69 @@ def relink_agents(
 
         if orphans:
             districts = {
-                d.name.lower(): d.id
+                d.name.lower(): d
                 for d in db.scalars(select(District).where(District.deleted_at.is_(None)))
             }
+            parent_ids = {d.parent_id for d in districts.values() if d.parent_id}
             branches = {
                 (b.district_id, b.name.lower()): b.id
                 for b in db.scalars(select(Branch).where(Branch.deleted_at.is_(None)))
             }
 
-            for code, (region, org) in sorted(orphans.items()):
-                district_id = districts.get(region.lower())
-                if district_id is None:
-                    district_id = _stage_create(
+            def parent_of(org: str) -> District:
+                parent = districts.get(org.lower())
+                if parent is None:
+                    parent = _stage_create(
                         db, District,
-                        {"name": region, "description": "Created from imported data"}, actor_id,
-                    ).id
-                    districts[region.lower()] = district_id
-                    created["districts"] += 1
+                        {"name": org, "description": "Created from imported data"}, actor_id,
+                    )
+                    districts[org.lower()] = parent
+                    created["parent_districts"] += 1
+                return parent
 
-                branch_id = branches.get((district_id, org.lower()))
+            for code, (region, org) in sorted(orphans.items()):
+                nest = region != UNASSIGNED  # the fallback bucket stays top-level
+                child = districts.get(region.lower())
+
+                if child is None:
+                    parent = parent_of(org) if nest else None
+                    child = _stage_create(
+                        db, District,
+                        {
+                            "name": region,
+                            "parent_id": parent.id if parent else None,
+                            "description": "Created from imported data",
+                        },
+                        actor_id,
+                    )
+                    districts[region.lower()] = child
+                    created["districts"] += 1
+                    if parent:
+                        parent_ids.add(parent.id)
+                elif nest and child.parent_id is None and child.id not in parent_ids:
+                    # A top-level district left by an earlier relink: adopt it under the organization.
+                    parent = parent_of(org)
+                    if parent.id != child.id:
+                        child.parent_id = parent.id
+                        child.updated_by = actor_id
+                        parent_ids.add(parent.id)
+
+                branch_id = branches.get((child.id, org.lower()))
                 if branch_id is None:
                     branch_id = _stage_create(
                         db, Branch,
-                        {"name": org, "district_id": district_id,
+                        {"name": org, "district_id": child.id,
                          "description": "Created from imported data"},
                         actor_id,
                     ).id
-                    branches[(district_id, org.lower())] = branch_id
+                    branches[(child.id, org.lower())] = branch_id
                     created["branches"] += 1
 
                 agent_data = {
                     "agent_shortcode": code,
                     "agent_name": code,  # reports carry no agent name; edit it later
                     "branch_id": branch_id,
-                    "district_id": district_id,
+                    "district_id": child.id,
                     "remark": "Auto-created from imported data",
                 }
                 if AGENTS_HAVE_FSP:

@@ -11,7 +11,7 @@ type Audit = {
 };
 
 export type User = Audit & { name: string; username: string; email: string; role: UserRole };
-export type District = Audit & { name: string; description: string | null,audit:AuditStamp | null,branch_count: string,agent_count:string  };
+export type District = Audit & { name: string; description: string | null,audit:AuditStamp | null,branch_count: string,agent_count:string,parent_id: string | null  };
 export type Branch = Audit & { name: string; description: string | null; district_id: string };
 export type Agent = Audit & {
   parent_shortcode: string | null;
@@ -27,7 +27,8 @@ export type TokenResponse = { access_token: string; token_type: string };
 
 
 // ---- request payloads (what the API accepts) ----
-export type DistrictPayload = { name: string; description: string | null; status: Status };
+export type DistrictPayload = { name: string; description: string | null; status: Status,parent_id: string | null };
+export type DistrictChild = Pick<District, "id" | "name" | "description" | "status" | "parent_id">;
 export type BranchPayload = { name: string; description: string | null; district_id: string; status: Status };
 export type AgentPayload = {
   parent_shortcode: string | null;
@@ -54,6 +55,7 @@ export type ListParams = {
   limit?: number;
   q?: string;
   status?: Status;
+  parents_only?: boolean; parent_id?: string
 };
 
 export type CountStat = { total: number; active: number; inactive: number };
@@ -77,14 +79,14 @@ export type AuditLog = {
 };
 
 export type BranchDetail = Branch & { district: District; agent_count: number; audit?: AuditStamp | null };
-export type DistrictDetail = District & { branch_count: number; agent_count: number; audit?: AuditStamp | null };
+export type DistrictDetail = District & { branch_count: number; agent_count: number; audit?: AuditStamp | null,parent_name: string | null; children: DistrictChild[] };
 export type AgentDetail = Agent & { branch: Branch; district: District; audit?: AuditStamp | null };
 
 export type CommissionRate = {
   id: string;
   service_name: string;
   rate: string | number; // percent; the API serialises Decimal as a string
-  service_types: string[] | null;
+  service_types: TargetServiceType[]; // { id, code, name }
   remark: string | null;
   status: Status;
   created_at: string;
@@ -93,7 +95,7 @@ export type CommissionRate = {
 export type CommissionRatePayload = {
   service_name: string;
   rate: number;
-  service_types: string[] | null;
+  service_type_ids: string[];
   remark: string | null;
   status: Status;
 };
@@ -111,9 +113,11 @@ export type FspPayload = { code: string; name: string; description: string | nul
 export type ServiceType = {
   id: string; code: string; name: string; csv_label: string | null; description: string | null;
   status: Status; created_at: string; updated_at: string;
+  sort_order: number
 };
 export type ServiceTypePayload = {
   code: string; name: string; csv_label: string | null; description: string | null; status: Status;
+  sort_order?: number
 };
 
 export type CommissionRule = {
@@ -165,7 +169,8 @@ export type TargetServiceType = { id: string; code: string; name: string };
 export type ServiceTypeTarget = {
   id: string;
   name: string | null;
-  year: number;
+  start_date:string;
+  end_date:string;
   target_value: string | number;        // Decimals arrive as strings
   status: Status;
   created_at: string;
@@ -193,7 +198,8 @@ export type ServiceTypeTargetDetail = ServiceTypeTarget & {
 
 export type ServiceTypeTargetPayload = {
   name: string | null;
-  year: number;
+  start_date:string;
+  end_date:string;
   target_value: number;
   service_type_ids: string[];
   status: Status;
@@ -250,3 +256,38 @@ export interface TargetPerformance {
   achievement_percent: string | number | null; actual_outside_districts: string | number;
   districts: DistrictPerformance[];
 }
+
+export type PeriodTarget = {
+  id: string;
+  start_date: string;       // YYYY-MM-DD
+  end_date: string;
+  target_value: string | number;
+  status?: Status;
+};
+
+export interface PeriodTargetInput {
+  id?: string | null;
+  start_date: string;
+  end_date: string;
+  target_value: number;
+}
+
+type Num = string | number;
+export type PerformanceMetric = "amount" | "count";
+
+export interface MonthPerformance {
+  month: number; target_value: Num; actual_value: Num; variance: Num; achievement_percent: Num | null;
+}
+export interface DistrictPerformance {
+  district_id: string; district_name: string; target_value: Num; actual_value: Num;
+  variance: Num; achievement_percent: Num | null; months: MonthPerformance[];
+}
+export interface TargetPerformance {
+  target_id: string; name: string | null; start_date: string; end_date: string;
+  metric: PerformanceMetric; target_value: Num; allocated_value: Num; actual_value: Num;
+  achievement_percent: Num | null; actual_outside_districts: Num; districts: DistrictPerformance[];
+}
+
+// ServiceTypeTargetFilters: make sure it has  date_from?: string; date_to?: string;
+// ServiceTypeTargetDetail.district_targets[]: make sure it has
+//   monthly_targets: { month: number; percent: Num; target_value: Num }[]

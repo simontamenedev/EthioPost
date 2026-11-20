@@ -1,10 +1,11 @@
 # app/api/routes/service_type_targets.py
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import AdminUser, CurrentUser, DbSession
@@ -12,46 +13,45 @@ from app.api.utils import conflict, get_or_404
 from app.core.enums import AuditAction, Status, UserRole
 from app.crud import service_type_target_crud
 from app.crud.audit import record_audit
-from app.models import District, DistrictTarget,DistrictTargetMonth, ServiceType, ServiceTypeTarget, ServiceTypeTargetItem
+from app.models import District, DistrictTarget, DistrictTargetMonth, ServiceType, ServiceTypeTarget, ServiceTypeTargetItem
 from app.schemas.service_type_target import (
     DistrictAllocationPayload,
     DistrictAllocationRow,
     MonthAllocationPayload,
     MonthAllocationResponse,
     MonthTargetRead,
+    PeriodTargetRead,
+    PeriodTargetsPut,
     TargetCreate,
     TargetDetail,
+    TargetPerformance,
     TargetRead,
     TargetUpdate,
-    TargetPerformance,
 )
 from app.services.audit_stamp import audit_stamp
 from app.services.service_target_service import (
     TargetAllocationError,
     TargetServiceTypeError,
     allocate_by_percent,
-    target_performance,
+    overlapping_service_type_names,
     replace_district_targets,
     replace_monthly_percents,
+    set_period_targets,
     set_service_types,
     split_evenly,
     split_months_evenly,
+    target_performance,
     update_national_target,
 )
 
 router = APIRouter(prefix="/service-type-targets", tags=["service-type-targets"])
-LABEL = "Annual target"
+LABEL = "Target"
 
 # Avoids N+1 queries when listing: service types and district shares load in bulk.
 _LIST_OPTIONS = (
     selectinload(ServiceTypeTarget.items).selectinload(ServiceTypeTargetItem.service_type),
     selectinload(ServiceTypeTarget.district_targets),
 )
-
-MONTH_NAMES = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-]
 
 MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
@@ -70,6 +70,8 @@ def _months_diff(old: dict[str, str], new: dict[str, str]) -> tuple[dict[str, st
             old_out[MONTH_NAMES[m - 1]] = f"{before:.2f}%"
             new_out[MONTH_NAMES[m - 1]] = f"{after:.2f}%"
     return old_out, new_out
+
+
 def _unprocessable(message: str) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, message)
 
@@ -80,20 +82,46 @@ def _ensure_exist(db, model, ids: set[uuid.UUID], label: str) -> None:
         raise _unprocessable(f"Unknown {label}: {sorted(map(str, ids - found))}")
 
 
-def _ensure_no_overlap(db, year: int, ids: set[uuid.UUID], exclude_id: uuid.UUID | None = None) -> None:
-    """A service type may be in only one active target per year."""
-    stmt = select(ServiceType.name).join(
-        ServiceTypeTargetItem, ServiceTypeTargetItem.service_type_id == ServiceType.id
-    ).where(
-        ServiceTypeTargetItem.service_type_id.in_(ids),
-        ServiceTypeTargetItem.year == year,
-        ServiceTypeTargetItem.deleted_at.is_(None),
+def _ensure_parents_only(db, ids: set[uuid.UUID]) -> None:
+    """Targets are allocated to parent districts only; children roll up into their parent."""
+    if not ids:
+        return
+    children = list(
+        db.scalars(select(District.name).where(District.id.in_(ids), District.parent_id.is_not(None)))
     )
-    if exclude_id:
-        stmt = stmt.where(ServiceTypeTargetItem.service_type_target_id != exclude_id)
-    names = list(db.scalars(stmt))
+    if children:
+        raise _unprocessable(
+            f"Targets can only be allocated to parent districts: {', '.join(sorted(children))}"
+        )
+
+
+def _ensure_no_overlap(
+    db,
+    start_date: date,
+    end_date: date,
+    ids: set[uuid.UUID],
+    exclude_id: uuid.UUID | None = None,
+) -> None:
+    """A service type may be in only one active target for any given date."""
+    names = overlapping_service_type_names(db, ids, start_date, end_date, exclude_target_id=exclude_id)
     if names:
-        raise conflict(f"Already in another {year} target: {', '.join(sorted(names))}")
+        raise conflict(
+            f"Already in another target overlapping {start_date} to {end_date}: {', '.join(names)}"
+        )
+
+
+def _ensure_periods_inside(target: ServiceTypeTarget, start_date: date, end_date: date) -> None:
+    """Shrinking the date range must not strand existing period targets outside it."""
+    outside = [
+        f"{p.start_date} to {p.end_date}"
+        for p in target.periods
+        if p.deleted_at is None and (p.start_date < start_date or p.end_date > end_date)
+    ]
+    if outside:
+        raise conflict(
+            f"Period targets fall outside {start_date} to {end_date}: {', '.join(outside)}. "
+            "Adjust the periods first."
+        )
 
 
 def _detail(db, target: ServiceTypeTarget, user) -> TargetDetail:
@@ -117,15 +145,24 @@ def list_targets(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     status_: Status | None = Query(None, alias="status"),
-    year: int | None = Query(None),
+    year: int | None = Query(None, description="Targets overlapping this calendar year"),
+    date_from: date | None = Query(None, description="Targets ending on/after this date"),
+    date_to: date | None = Query(None, description="Targets starting on/before this date"),
     service_type_id: uuid.UUID | None = Query(None),
     q: str | None = Query(None, description="Search by name"),
 ) -> list[ServiceTypeTarget]:
+    # `year` is a shortcut for the whole calendar year, unless explicit dates are given.
+    if year:
+        date_from = date_from or date(year, 1, 1)
+        date_to = date_to or date(year, 12, 31)
+
     conditions = []
     if status_:
         conditions.append(ServiceTypeTarget.status == status_)
-    if year:
-        conditions.append(ServiceTypeTarget.year == year)
+    if date_from:
+        conditions.append(ServiceTypeTarget.end_date >= date_from)
+    if date_to:
+        conditions.append(ServiceTypeTarget.start_date <= date_to)
     if q:
         conditions.append(ServiceTypeTarget.name.ilike(f"%{q}%"))
     if service_type_id:
@@ -150,7 +187,7 @@ def get_target(target_id: uuid.UUID, db: DbSession, user: CurrentUser) -> Target
 def create_target(payload: TargetCreate, db: DbSession, admin: AdminUser) -> TargetDetail:
     service_type_ids = set(payload.service_type_ids)
     _ensure_exist(db, ServiceType, service_type_ids, "service types")
-    _ensure_no_overlap(db, payload.year, service_type_ids)
+    _ensure_no_overlap(db, payload.start_date, payload.end_date, service_type_ids)
 
     data = payload.model_dump(exclude={"service_type_ids"})
     if data.get("name"):
@@ -176,6 +213,23 @@ def update_target(target_id: uuid.UUID, payload: TargetUpdate, db: DbSession, ad
     if data.get("name"):
         data["name"] = " ".join(data["name"].split())
 
+    # ---- validate everything before writing anything ----
+    new_start = data.get("start_date") or target.start_date
+    new_end = data.get("end_date") or target.end_date
+    if new_end < new_start:
+        raise _unprocessable("end_date must be on or after start_date.")
+    dates_changed = (new_start, new_end) != (target.start_date, target.end_date)
+
+    ids: set[uuid.UUID] | None = None
+    if service_type_ids is not None:
+        ids = set(service_type_ids)
+        _ensure_exist(db, ServiceType, ids, "service types")
+    if dates_changed or ids is not None:
+        check_ids = ids if ids is not None else {i.service_type_id for i in target.items}
+        _ensure_no_overlap(db, new_start, new_end, check_ids, exclude_id=target.id)
+    if dates_changed:
+        _ensure_periods_inside(target, new_start, new_end)
+
     old_audit: dict = {}
     new_audit: dict = {}
     try:
@@ -184,10 +238,7 @@ def update_target(target_id: uuid.UUID, payload: TargetUpdate, db: DbSession, ad
             old_audit["district_targets"] = _split_snapshot(target)
             update_national_target(db, target, new_value, keep_percentages=keep_percentages, actor_id=admin.id)
             new_audit["district_targets"] = _split_snapshot(target)
-        if service_type_ids is not None:
-            ids = set(service_type_ids)
-            _ensure_exist(db, ServiceType, ids, "service types")
-            _ensure_no_overlap(db, target.year, ids, exclude_id=target.id)
+        if ids is not None:
             old_audit["service_type_ids"] = _type_ids_snapshot(target)
             set_service_types(db, target, ids, actor_id=admin.id)
             new_audit["service_type_ids"] = _type_ids_snapshot(target)
@@ -219,10 +270,10 @@ def update_target(target_id: uuid.UUID, payload: TargetUpdate, db: DbSession, ad
 
 @router.get("/{target_id}/districts", response_model=list[DistrictAllocationRow])
 def list_district_allocations(target_id: uuid.UUID, db: DbSession, _: CurrentUser) -> list[DistrictAllocationRow]:
-    """Every active district with its current share (0 when it has none).
+    """Every active PARENT district with its current share (0 when it has none).
 
-    Districts that are no longer active but still hold a share are included, so
-    saving the split never drops them silently.
+    Any district that already holds a share is included even if it is inactive or a child
+    (e.g. allocated before the hierarchy existed), so it stays visible and can be cleared.
     """
     target = get_or_404(service_type_target_crud, db, target_id, LABEL)
     shares = {dt.district_id: dt for dt in target.district_targets}
@@ -230,7 +281,10 @@ def list_district_allocations(target_id: uuid.UUID, db: DbSession, _: CurrentUse
         select(District)
         .where(
             District.deleted_at.is_(None),
-            or_(District.status == Status.ACTIVE, District.id.in_(list(shares))),
+            or_(
+                and_(District.parent_id.is_(None), District.status == Status.ACTIVE),
+                District.id.in_(list(shares)),
+            ),
         )
         .order_by(District.name)
     )
@@ -256,6 +310,7 @@ def set_district_targets(
     target = get_or_404(service_type_target_crud, db, target_id, LABEL)
     district_ids = [a.district_id for a in payload.allocations]
     _ensure_exist(db, District, set(district_ids), "districts")
+    _ensure_parents_only(db, set(district_ids))
 
     old_split = _split_snapshot(target)
     try:
@@ -290,7 +345,6 @@ def set_district_targets(
 def delete_target(target_id: uuid.UUID, db: DbSession, admin: AdminUser) -> None:
     target = get_or_404(service_type_target_crud, db, target_id, LABEL)
     now = datetime.now(UTC)
-        # inside delete_target, before the existing loop
     district_target_ids = list(
         db.scalars(
             select(DistrictTarget.id).where(
@@ -313,6 +367,7 @@ def delete_target(target_id: uuid.UUID, db: DbSession, admin: AdminUser) -> None
         for row in rows:
             row.deleted_at, row.deleted_by = now, admin.id
     service_type_target_crud.soft_delete(db, target, actor_id=admin.id)  # commits everything
+
 
 def _months_snapshot(dt: DistrictTarget) -> dict[str, str]:
     return {str(m.month): str(m.percent) for m in dt.months}
@@ -396,7 +451,8 @@ def set_month_targets(
         )
     db.commit()
     db.refresh(target)
-    return _detail(db, target, admin) 
+    return _detail(db, target, admin)
+
 
 @router.get("/{target_id}/performance", response_model=TargetPerformance)
 def get_target_performance(
@@ -406,6 +462,20 @@ def get_target_performance(
     metric: Literal["amount", "count"] = Query("amount"),
     district_id: uuid.UUID | None = Query(None, description="Only this district"),
 ) -> dict:
-    """Actual vs target per district, annually and per month."""
+    """Actual vs target per district, for the whole date range and per month."""
     target = get_or_404(service_type_target_crud, db, target_id, LABEL)
     return target_performance(db, target, metric=metric, district_id=district_id)
+
+
+@router.get("/{target_id}/periods", response_model=list[PeriodTargetRead])
+def list_periods(target_id: uuid.UUID, db: DbSession, _: CurrentUser) -> list[dict]:
+    target = get_or_404(service_type_target_crud, db, target_id, LABEL)
+    return target.period_targets
+
+
+@router.put("/{target_id}/periods", response_model=list[PeriodTargetRead])
+def put_periods(target_id: uuid.UUID, payload: PeriodTargetsPut, db: DbSession, admin: AdminUser) -> list[dict]:
+    target = get_or_404(service_type_target_crud, db, target_id, LABEL)
+    set_period_targets(db, target, payload.periods, actor_id=admin.id)
+    db.refresh(target)
+    return target.period_targets

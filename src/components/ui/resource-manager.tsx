@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
-import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronRight, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import type { DefaultValues, FieldValues } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
@@ -54,12 +54,17 @@ type ResourceManagerProps<TRow extends { id: string }, TForm extends FieldValues
   /** e.g. stop an admin deleting their own account */
   canDeleteRow?: (row: TRow) => boolean;
   toolbarExtra?: ReactNode;
+  /** Rendered between the page header and the toolbar (e.g. KPI cards and charts). */
+  summary?: ReactNode;
 
-   resetPageKey?: unknown;
+  /** Change this value to jump back to the first page (e.g. when an outside filter changes). */
+  resetPageKey?: unknown;
   /** width of the add/edit modal */
   modalSize?: "sm" | "md" | "lg";
   /** When provided, a "View" action appears and the detail slides in beside the table. */
   renderDetail?: (row: TRow, close: () => void) => ReactNode;
+  /** When provided, a chevron toggles a collapsible full-width row under each table row. */
+  renderExpanded?: (row: TRow) => ReactNode;
 };
 
 type ModalState<TRow> = { mode: "create" } | { mode: "edit"; row: TRow } | null;
@@ -68,12 +73,12 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
   title, description, singular, searchPlaceholder = "Search…",
   columns, useList, createMutation, updateMutation, deleteMutation,
   createSchema, updateSchema, fields, emptyValues, toFormValues, toCreatePayload, toUpdatePayload,
-  rowLabel, canDeleteRow, toolbarExtra,resetPageKey, modalSize = "md", renderDetail,
+  rowLabel, canDeleteRow, toolbarExtra, summary, resetPageKey, modalSize = "md", renderDetail, renderExpanded,
 }: ResourceManagerProps<TRow, TForm, TCreate, TUpdate>) {
   const isAdmin = useIsAdmin();
 
   const [page, setPage] = useState(0);
-    // Reset to the first page when an external filter changes (no effect needed).
+  // Reset to the first page when an external filter changes (no effect needed).
   const [prevResetKey, setPrevResetKey] = useState(resetPageKey);
   if (prevResetKey !== resetPageKey) {
     setPrevResetKey(resetPageKey);
@@ -91,6 +96,17 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
   // `detailOpen` drives the animation itself.
   const [viewing, setViewing] = useState<TRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  // Rows whose collapsible sub-row is open (only used with `renderExpanded`).
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set());
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // Ask for one extra row to know whether a next page exists.
   const query = useList({ skip: page * PAGE_SIZE, limit: PAGE_SIZE + 1, q: q || undefined, status: status || undefined });
@@ -143,7 +159,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
   const visibleFields = fields.filter((f) => !f.modes || f.modes.includes(mode));
   const schema = mode === "edit" ? (updateSchema ?? createSchema) : createSchema;
 
-  const showActions = isAdmin || !!renderDetail;
+  const showActions = isAdmin || !!renderDetail || !!renderExpanded;
   const isViewing = (row: TRow) => detailOpen && viewing?.id === row.id;
 
   return (
@@ -165,8 +181,11 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
         </div>
       </div>
 
+      {/* Optional summary (KPI cards, charts) above the toolbar */}
+      {summary}
+
       {/* Toolbar: search grows, filter has a fixed width, same height for both */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="relative w-full sm:max-w-sm sm:flex-1">
           <Search
             size={16}
@@ -193,7 +212,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
             <option value="inactive">Inactive</option>
           </select>
         </div>
-        {toolbarExtra && <div >{toolbarExtra}</div>}
+        {toolbarExtra && <div>{toolbarExtra}</div>}
       </div>
 
       {/* Table on the left; the detail panel slides in on the right and pushes the table narrower.
@@ -214,10 +233,29 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
             pageSize={PAGE_SIZE}
             hasNext={hasNext}
             onPageChange={setPage}
+            renderExpanded={
+              renderExpanded
+                ? (row) => (expandedIds.has(row.id) ? renderExpanded(row) : null)
+                : undefined
+            }
             renderActions={
               showActions
                 ? (row) => (
                     <div className="flex justify-end gap-1">
+                      {renderExpanded && (
+                        <button
+                          type="button"
+                          aria-label={`${expandedIds.has(row.id) ? "Hide" : "Show"} breakdown for ${rowLabel(row)}`}
+                          aria-expanded={expandedIds.has(row.id)}
+                          onClick={() => toggleExpanded(row.id)}
+                          className={cn("p-2 text-slate-600 transition hover:bg-slate-100 dark:text-white/75 dark:hover:bg-white/10", focusRing)}
+                        >
+                          <ChevronRight
+                            size={16}
+                            className={cn("transition-transform motion-reduce:transition-none", expandedIds.has(row.id) && "rotate-90")}
+                          />
+                        </button>
+                      )}
                       {renderDetail && (
                         <button
                           type="button"
@@ -225,7 +263,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
                           aria-pressed={isViewing(row)}
                           onClick={() => openDetail(row)}
                           className={cn(
-                            "rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 dark:text-white/75 dark:hover:bg-white/10",
+                            "p-2 text-slate-600 transition hover:bg-slate-100 dark:text-white/75 dark:hover:bg-white/10",
                             isViewing(row) && "bg-slate-100 dark:bg-white/10",
                             focusRing,
                           )}
@@ -239,7 +277,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
                             type="button"
                             aria-label={`Edit ${rowLabel(row)}`}
                             onClick={() => setModal({ mode: "edit", row })}
-                            className={cn("rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 dark:text-white/75 dark:hover:bg-white/10", focusRing)}
+                            className={cn("p-2 text-slate-600 transition hover:bg-slate-100 dark:text-white/75 dark:hover:bg-white/10", focusRing)}
                           >
                             <Pencil size={16} />
                           </button>
@@ -248,7 +286,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
                               type="button"
                               aria-label={`Delete ${rowLabel(row)}`}
                               onClick={() => setToDelete(row)}
-                              className={cn("rounded-lg p-2 text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10", focusRing)}
+                              className={cn("p-2 text-red-600 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10", focusRing)}
                             >
                               <Trash2 size={16} />
                             </button>
@@ -272,7 +310,7 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
             className={cn(
               "shrink-0 overflow-clip transition-[width,max-height,margin,opacity,visibility] duration-300 ease-in-out motion-reduce:transition-none lg:self-stretch",
               detailOpen
-                ? "visible mt-5 max-h-[250vh] opacity-100 lg:ml-5 lg:mt-0 lg:max-h-none lg:w-[26rem]"
+                ? "visible mt-5 max-h-[250vh] opacity-100 lg:ml-5 lg:mt-0 lg:max-h-none lg:w-[32rem]"
                 : "invisible mt-0 max-h-0 opacity-0 lg:ml-0 lg:max-h-none lg:w-0",
             )}
           >

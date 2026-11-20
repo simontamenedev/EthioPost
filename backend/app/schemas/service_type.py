@@ -14,6 +14,7 @@ class ServiceTypeCreate(BaseModel):
     csv_label: str | None = Field(default=None, max_length=50)
     description: str | None = None
     status: Status = Status.ACTIVE
+    sort_order: int = Field(default=100, ge=0, le=9999)
 
 
 class ServiceTypeUpdate(BaseModel):
@@ -22,6 +23,7 @@ class ServiceTypeUpdate(BaseModel):
     csv_label: str | None = Field(default=None, max_length=50)
     description: str | None = None
     status: Status | None = None
+    sort_order: int | None = Field(default=None, ge=0, le=9999)
 
 
 class ServiceTypeRead(BaseModel):
@@ -35,6 +37,7 @@ class ServiceTypeRead(BaseModel):
     status: Status
     created_at: datetime
     updated_at: datetime
+    sort_order: int
 
 
 class ServiceTypeRef(BaseModel):

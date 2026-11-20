@@ -31,7 +31,7 @@ from app.models import (
     CustomerUpgrade,
     ServiceType,
 )
-
+from sqlalchemy.orm import Session, selectinload
 CENT = Decimal("0.01")
 HUNDRED = Decimal(100)
 
@@ -68,9 +68,16 @@ class CommissionEngine:
             self.rules[name.strip().lower()].append(rule)
 
         self.rates: dict[str, CommissionRate] = {}
-        for rate in db.scalars(select(CommissionRate).where(CommissionRate.deleted_at.is_(None))):
-            for st in rate.service_types or []:
-                self.rates[st.strip().lower()] = rate
+        rate_q = (
+            select(CommissionRate)
+            .options(selectinload(CommissionRate.service_types))
+            .where(CommissionRate.deleted_at.is_(None))
+        )
+        for rate in db.scalars(rate_q):
+            for st in rate.service_types:
+                for key in (st.name, st.csv_label):
+                    if key:
+                        self.rates[key.strip().lower()] = rate
 
     # ------------------------------------------------------------------ lookup
     def _find_rule(

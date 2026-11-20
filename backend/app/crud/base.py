@@ -57,17 +57,21 @@ class CRUDBase(Generic[ModelT]):
         skip: int = 0,
         limit: int = 50,
         options: Sequence[ExecutableOption] = (),
+        order_by: Sequence[Any] | None = None,
     ) -> list[ModelT]:
+        ordering = (
+            tuple(order_by)
+            if order_by
+            else (self.model.created_at.desc(),)
+        )
+
         stmt = (
             select(self.model)
             .where(
                 self.model.deleted_at.is_(None),
                 *conditions,
             )
-            .order_by(
-                self.model.created_at.desc(),
-                self.model.id,
-            )
+            .order_by(*ordering, self.model.id)
             .offset(skip)
             .limit(limit)
         )

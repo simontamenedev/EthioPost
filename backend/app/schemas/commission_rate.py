@@ -7,10 +7,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.core.enums import Status
 
 
+class ServiceTypeRef(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    code: str
+    name: str
+
+
 class CommissionRateCreate(BaseModel):
     service_name: str = Field(min_length=2, max_length=150)
     rate: Decimal = Field(ge=0, le=100, decimal_places=2)
-    service_types: list[str] | None = None
+    service_type_ids: list[uuid.UUID] = Field(min_length=1)
     remark: str | None = None
     status: Status = Status.ACTIVE
 
@@ -18,7 +25,7 @@ class CommissionRateCreate(BaseModel):
 class CommissionRateUpdate(BaseModel):
     service_name: str | None = Field(None, min_length=2, max_length=150)
     rate: Decimal | None = Field(None, ge=0, le=100, decimal_places=2)
-    service_types: list[str] | None = None
+    service_type_ids: list[uuid.UUID] | None = Field(None, min_length=1)
     remark: str | None = None
     status: Status | None = None
 
@@ -29,7 +36,7 @@ class CommissionRateRead(BaseModel):
     id: uuid.UUID
     service_name: str
     rate: Decimal
-    service_types: list[str] | None = None
+    service_types: list[ServiceTypeRef] = []
     remark: str | None = None
     status: Status
     created_at: datetime
