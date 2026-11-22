@@ -63,7 +63,7 @@ type ResourceManagerProps<TRow extends { id: string }, TForm extends FieldValues
   modalSize?: "sm" | "md" | "lg";
   /** When provided, a "View" action appears and the detail slides in beside the table. */
   renderDetail?: (row: TRow, close: () => void) => ReactNode;
-  /** When provided, a chevron toggles a collapsible full-width row under each table row. */
+  /** When provided, a chevron in the first column toggles a collapsible full-width row under each table row. */
   renderExpanded?: (row: TRow) => ReactNode;
 };
 
@@ -159,7 +159,8 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
   const visibleFields = fields.filter((f) => !f.modes || f.modes.includes(mode));
   const schema = mode === "edit" ? (updateSchema ?? createSchema) : createSchema;
 
-  const showActions = isAdmin || !!renderDetail || !!renderExpanded;
+  // The expand chevron lives in its own first column, so it no longer counts as an action.
+  const showActions = isAdmin || !!renderDetail;
   const isViewing = (row: TRow) => detailOpen && viewing?.id === row.id;
 
   return (
@@ -233,6 +234,24 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
             pageSize={PAGE_SIZE}
             hasNext={hasNext}
             onPageChange={setPage}
+            renderExpandToggle={
+              renderExpanded
+                ? (row) => (
+                    <button
+                      type="button"
+                      aria-label={`${expandedIds.has(row.id) ? "Hide" : "Show"} breakdown for ${rowLabel(row)}`}
+                      aria-expanded={expandedIds.has(row.id)}
+                      onClick={() => toggleExpanded(row.id)}
+                      className={cn("p-2 text-slate-600 transition hover:bg-slate-100 dark:text-white/75 dark:hover:bg-white/10", focusRing)}
+                    >
+                      <ChevronRight
+                        size={16}
+                        className={cn("transition-transform motion-reduce:transition-none", expandedIds.has(row.id) && "rotate-90")}
+                      />
+                    </button>
+                  )
+                : undefined
+            }
             renderExpanded={
               renderExpanded
                 ? (row) => (expandedIds.has(row.id) ? renderExpanded(row) : null)
@@ -242,20 +261,6 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
               showActions
                 ? (row) => (
                     <div className="flex justify-end gap-1">
-                      {renderExpanded && (
-                        <button
-                          type="button"
-                          aria-label={`${expandedIds.has(row.id) ? "Hide" : "Show"} breakdown for ${rowLabel(row)}`}
-                          aria-expanded={expandedIds.has(row.id)}
-                          onClick={() => toggleExpanded(row.id)}
-                          className={cn("p-2 text-slate-600 transition hover:bg-slate-100 dark:text-white/75 dark:hover:bg-white/10", focusRing)}
-                        >
-                          <ChevronRight
-                            size={16}
-                            className={cn("transition-transform motion-reduce:transition-none", expandedIds.has(row.id) && "rotate-90")}
-                          />
-                        </button>
-                      )}
                       {renderDetail && (
                         <button
                           type="button"
@@ -314,7 +319,12 @@ export function ResourceManager<TRow extends { id: string }, TForm extends Field
                 : "invisible mt-0 max-h-0 opacity-0 lg:ml-0 lg:max-h-none lg:w-0",
             )}
           >
-            {viewing && renderDetail(viewing, closeDetail)}
+            {/* Force whatever the detail renders to fill the full width and height of the panel. */}
+            {viewing && (
+              <div className="h-full w-full [&>*]:h-full [&>*]:w-full [&>*]:max-w-none">
+                {renderDetail(viewing, closeDetail)}
+              </div>
+            )}
           </div>
         )}
       </div>

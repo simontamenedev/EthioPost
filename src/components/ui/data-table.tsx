@@ -25,6 +25,8 @@ type DataTableProps<T> = {
   emptyHint?: string;
   /** Renders the right-hand actions cell; omit (or return null) for read-only tables. */
   renderActions?: (row: T) => ReactNode;
+  /** Renders a narrow first column (e.g. an expand chevron) before all other columns. */
+  renderExpandToggle?: (row: T) => ReactNode;
   /** Return content to show a full-width row under `row`; return null/undefined while collapsed. */
   renderExpanded?: (row: T) => ReactNode;
   page: number; // zero-based
@@ -37,10 +39,12 @@ const cellBase = "px-4 py-3.5 text-sm text-slate-700 dark:text-white/80";
 
 export function DataTable<T>({
   columns, rows, getRowId, isLoading, isError, errorMessage, onRetry,
-  emptyTitle = "Nothing here yet", emptyHint, renderActions, renderExpanded, page, pageSize, hasNext, onPageChange,
+  emptyTitle = "Nothing here yet", emptyHint, renderActions, renderExpandToggle, renderExpanded,
+  page, pageSize, hasNext, onPageChange,
 }: DataTableProps<T>) {
   const hasActions = Boolean(renderActions);
-  const colSpan = columns.length + (hasActions ? 1 : 0);
+  const hasToggle = Boolean(renderExpandToggle);
+  const colSpan = columns.length + (hasActions ? 1 : 0) + (hasToggle ? 1 : 0);
 
   return (
     <div className={cn(card, "overflow-hidden")}>
@@ -48,6 +52,11 @@ export function DataTable<T>({
         <table className="w-full min-w-[640px] border-collapse text-left">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">
+              {hasToggle && (
+                <th scope="col" className="w-px py-3 pl-3 pr-0">
+                  <span className="sr-only">Expand</span>
+                </th>
+              )}
               {columns.map((c) => (
                 <th key={c.key} scope="col" className={cn("px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-white/60", c.className)}>
                   {c.header}
@@ -92,6 +101,7 @@ export function DataTable<T>({
               return (
                 <Fragment key={getRowId(row)}>
                   <tr className="transition-colors  dark:hover:bg-white/5">
+                    {hasToggle && <td className="w-px py-3.5 pl-3 pr-0">{renderExpandToggle?.(row)}</td>}
                     {columns.map((c) => (
                       <td key={c.key} className={cn(cellBase, c.className)}>{c.cell(row)}</td>
                     ))}

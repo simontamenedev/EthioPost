@@ -43,7 +43,8 @@ from app.services.service_target_service import (
     target_performance,
     update_national_target,
 )
-
+import logging
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/service-type-targets", tags=["service-type-targets"])
 LABEL = "Target"
 
@@ -180,7 +181,9 @@ def list_targets(
 @router.get("/{target_id}", response_model=TargetDetail)
 def get_target(target_id: uuid.UUID, db: DbSession, user: CurrentUser) -> TargetDetail:
     target = get_or_404(service_type_target_crud, db, target_id, LABEL)
-    return _detail(db, target, user)
+    detail = _detail(db, target, user)
+    logger.info("target detail: %s", detail.model_dump_json())
+    return detail
 
 
 @router.post("", response_model=TargetDetail, status_code=status.HTTP_201_CREATED)

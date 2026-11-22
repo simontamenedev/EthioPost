@@ -16,6 +16,9 @@ Interpretation of the source sheet (check these, they are the judgement calls):
   * "NA" and empty cells are skipped.
   * Rows with text that cannot be a number (milestones, 20%-of-sub-agent shares ...) keep that text in
     `conditions` next to the best numeric reading.
+  * Libam Life Insurance percentages (15% / 15% / 5%) are stored with basis TXN_AMOUNT, meaning the
+    percentage of the premium paid. Change the basis if your policy differs.
+  * SIM card distribution (30 ETB per SIM) is attached to Telebirr (Ethio telecom).
 Deviations from the sheet to avoid overlapping bands (marked "ASSUMED" below):
   * Telebirr cash-out "101-300" and "101-500" overlap  -> 101-300 and 301-500.
   * Telebirr Ethio-telecom bill "51-1000" and "1000-2000" -> 51-1000 and 1001-2000.
@@ -46,8 +49,9 @@ FSPS = {
     "MPESA": "M-PESA",
     "COOP": "COOP E-Birr",
     "AWASH": "Awash Birr",
+    "LIBAM": "Libam Life Insurance",
 }
-T, C, A, M, K, W = "TELEBIRR", "CBE_BIRR", "AHADU", "MPESA", "COOP", "AWASH"
+T, C, A, M, K, W, L = "TELEBIRR", "CBE_BIRR", "AHADU", "MPESA", "COOP", "AWASH", "LIBAM"
 
 # code -> (name, csv_label). csv_label must match the transactions report's "Service Type" column.
 SERVICE_TYPES = {
@@ -73,6 +77,12 @@ SERVICE_TYPES = {
     "AGENCY_BANKING": ("Agency Banking", None),
     "FUND_TRANSFER": ("Fund Transfer", None),
     "OTHER_SERVICES": ("Balance Enquiry / Mini Statement", None),
+    # Libam Life Insurance products
+    "LIBAM_INDIVIDUAL": ("Libam Individual", None),
+    "LIBAM_SCHOOL_FEE_GUARANTEE": ("Libam Life Insurance School Fee Guarantee", None),
+    "LIBAM_CARE": ("Libam Care (Hospitalization)", None),
+    # SIM cards
+    "SIM_DISTRIBUTION": ("SIM Distribution", None),
 }
 
 # ───────────────────────── rule rows ─────────────────────────
@@ -130,6 +140,15 @@ RULES: list[Rule] = [
     pct(W, "AIRTIME_TOPUP", None, None, 2, TXN, note="Sale airtime"),
     pct(T, "PACKAGE_SALES", None, None, 25, TXN, note="Of sold amount"),
     pct(T, "ANNUITY", None, None, 5, REV, note="Of revenue from non-agent activities made by the customer"),
+
+    # ── SIM card distribution ──
+    flat(T, "SIM_DISTRIBUTION", None, None, 30, note="Per SIM card (Ethio telecom)"),
+
+    # ── Libam Life Insurance ──
+    pct(L, "LIBAM_INDIVIDUAL", None, None, 15, TXN, note="Of the premium paid, Libam Individual"),
+    pct(L, "LIBAM_SCHOOL_FEE_GUARANTEE", None, None, 15, TXN,
+        note="Of the premium paid, Libam Life Insurance School Fee Guarantee"),
+    pct(L, "LIBAM_CARE", None, None, 5, TXN, note="Of the premium paid, Libam Care (hospitalization)"),
 
     # ── Agent / merchant fees ──
     flat(T, "AGENT_REGISTRATION", None, None, 2300,

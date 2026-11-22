@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -15,6 +16,7 @@ from app.schemas.agent_data import ImportBatchRead  # must now include fsp_id: u
 from app.services import csv_import, file_store
 from app.services.analytics import SPECS
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/imports", tags=["imports"])
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -43,6 +45,7 @@ def download_import(batch_id: uuid.UUID, db: DbSession, _: AdminUser) -> FileRes
     batch = get_or_404(import_batch_crud, db, batch_id, "Import")
     path = file_store.path_for(batch.id)
     if not path.is_file():
+        logger.warning("download of batch %s failed: original file missing on disk", batch_id)
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             "The original file was not stored (it was uploaded before file storage was added). Upload it again.",
@@ -58,11 +61,14 @@ async def upload_csv(
     dataset: Dataset = Form(...),
     file: UploadFile = File(...),
 ) -> ImportBatch:
+    logger.info("upload request: file=%r dataset=%s fsp=%s user=%s", file.filename, dataset.value, fsp_id, admin.id)
     get_or_404(fsp_crud, db, fsp_id, "Service provider")
     if not (file.filename or "").lower().endswith(".csv"):
+        logger.warning("upload rejected: %r is not a .csv", file.filename)
         raise HTTPException(422, "Please upload a .csv file")
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
+        logger.warning("upload rejected: %r is %d bytes (limit %d)", file.filename, len(content), MAX_UPLOAD_BYTES)
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File is larger than 20 MB")
     try:
         return csv_import.import_csv(
@@ -86,6 +92,7 @@ def relink_agents(
     fsp_id: uuid.UUID = Query(...),
 ) -> dict[str, dict[str, int]]:
     """Attach one provider's imported rows to agents, creating missing agents, branches and districts first."""
+    logger.info("relink request: fsp=%s user=%s", fsp_id, admin.id)
     get_or_404(fsp_crud, db, fsp_id, "Service provider")
     return csv_import.relink_agents(db, actor_id=admin.id, fsp_id=fsp_id)
 
@@ -95,9 +102,11 @@ def delete_import(batch_id: uuid.UUID, db: DbSession, admin: AdminUser) -> None:
     """Roll back a whole upload: its rows are soft-deleted, so the file can be re-imported."""
     batch = get_or_404(import_batch_crud, db, batch_id, "Import")
     model = SPECS[batch.dataset].model
-    db.execute(
+    res = db.execute(
         update(model)
         .where(model.import_batch_id == batch.id, model.deleted_at.is_(None))
         .values(deleted_at=datetime.now(UTC), deleted_by=admin.id)
     )
+    logger.info("delete import: batch=%s file=%r soft-deleted %d rows (user=%s)",
+                batch.id, batch.filename, res.rowcount, admin.id)
     import_batch_crud.soft_delete(db, batch, actor_id=admin.id)  # commits rows + batch together

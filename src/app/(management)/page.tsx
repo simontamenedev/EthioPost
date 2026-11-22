@@ -61,7 +61,7 @@ export default function HomePage() {
   const topFsp = d?.by_fsp[0];
 
   return (
-    <div className="mx-auto max-w-[1500px] px-5 py-7 sm:px-8 lg:px-10">
+    <div className="mx-auto w-full max-w-[1500px] px-5 py-7 sm:px-8 lg:px-10">
       <motion.p
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
@@ -92,7 +92,7 @@ export default function HomePage() {
           No commission data for this period.
         </p>
       ) : (
-        <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-5">
+        <motion.div variants={stagger} initial="hidden" animate="show" className="w-full space-y-5">
           <section aria-label="Commission overview" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               hero
@@ -103,22 +103,9 @@ export default function HomePage() {
               note={`Total commission ${fmt(d.totals.fsp_commission)} · Agents ${fmt(d.totals.agent_commission)} ETB`}
               icon={WalletCards}
             />
-            <StatCard
-              label="Agents"
-              value={counts.agents}
-              icon={BriefcaseBusiness}
-            />
-            <StatCard
-              label="Branches"
-              value={counts.branches}              
-              icon={Building2}
-            />
-            <StatCard
-              label="Districts"
-              value={counts.districts}
-              
-              icon={MapPinned}
-            />
+            <StatCard label="Agents" value={counts.agents} icon={BriefcaseBusiness} />
+            <StatCard label="Branches" value={counts.branches} icon={Building2} />
+            <StatCard label="Districts" value={counts.districts} icon={MapPinned} />
             <StatCard
               label="Customer registrations"
               value={d.totals.registrations}
@@ -149,30 +136,29 @@ export default function HomePage() {
             />
           </section>
 
-          <div className="grid gap-5 xl:grid-cols-3">
-            <motion.div variants={rise}>
-  <TargetAchievement />
-</motion.div>
-            <motion.div variants={rise} className="xl:col-span-2">
+          {/* Explicit 3-column grid: every child states how many columns it takes, so nothing
+              is left empty. (A col-span-2 in a grid with no columns creates a hidden extra column
+              and shrinks the other cards.) */}
+          <div className="grid w-full gap-5 xl:grid-cols-3">
+            <motion.div variants={rise} className="min-w-0 xl:col-span-3">
+              <TargetAchievement />
+            </motion.div>
+            <motion.div variants={rise} className="min-w-0 xl:col-span-2 [&>*]:h-full">
               <RankedBars title="Top agents" noun="agent" icon={BriefcaseBusiness} entries={agents} total={total} />
             </motion.div>
-            <motion.div variants={rise}>
+            <motion.div variants={rise} className="min-w-0 [&>*]:h-full">
               <DistrictDonut entries={districts} total={total} />
             </motion.div>
           </div>
 
-
-
-          {/* Financial service providers */}
-          <div className="grid gap-5 xl:grid-cols-3">
-            <motion.div variants={rise} className="xl:col-span-2">
-              <RankedBars title="Top providers" noun="provider" icon={Trophy} entries={providers} total={total} />
-            </motion.div>
-          </div>
+          {/* Financial service providers: full width */}
+          <motion.div variants={rise} className="w-full min-w-0">
+            <RankedBars title="Top providers" noun="provider" icon={Trophy} entries={providers} total={total} />
+          </motion.div>
 
           {d.by_fsp.map((fsp) => (
-            <div key={fsp.fsp_id} className="grid gap-5 xl:grid-cols-2">
-              <motion.div variants={rise}>
+            <div key={fsp.fsp_id} className="grid w-full gap-5 xl:grid-cols-2">
+              <motion.div variants={rise} className="min-w-0">
                 <RankedBars
                   title={`${fsp.fsp_name} · top agents`}
                   noun="agent"
@@ -181,7 +167,7 @@ export default function HomePage() {
                   total={fsp.ethiopost_commission}
                 />
               </motion.div>
-              <motion.div variants={rise}>
+              <motion.div variants={rise} className="min-w-0">
                 <RankedBars
                   title={`${fsp.fsp_name} · top districts`}
                   noun="district"

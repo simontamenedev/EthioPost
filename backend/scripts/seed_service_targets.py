@@ -1,13 +1,15 @@
-
 """Seed service-type targets and their monthly periods (Nov-26 to Jun-27).
 
 Usage:
     python -m scripts.seed_service_targets
 
-Run `python -m scripts.seed_commission_rates` first, so the service types exist.
+Service types that don't exist yet are created automatically
+(`seed_commission_rules` can still be run first to set up their rates).
 
-Creates ONE target per service covering Nov 1, 2026 to Jun 30, 2027,
+Creates ONE target per service group covering Nov 1, 2026 to Jun 30, 2027,
 with one period per month. The target value is the sum of its periods.
+"Libam Life Insurance" is one target shared by three Libam service types
+(Individual, School Fee Guarantee and Care).
 
 Safe to re-run: a service type already assigned to an overlapping target
 within this date range is skipped.
@@ -69,14 +71,56 @@ DATA: list[tuple[str, list[str], list[int]]] = [
     ("Cash-In / Cash-Out Services", ["CASH_IN", "CASH_OUT"], _WALLET_SIM),
     ("Digital Wallet Account Opening and Management", ["CUSTOMER_REGISTRATION"], _WALLET_SIM),
     ("Utility Bill Payment Services", ["BILL_PAYMENT"], [437, 5238, 6548, 8730, 8730, 8730, 3056, 2183]),
-    ("Libam Life Insurance", ["LIBAM_INSURANCE"], [3929, 47143, 58929, 78572, 78572, 78572, 27500, 19643]),
+    (
+        "Libam Life Insurance",
+        ["LIBAM_INDIVIDUAL", "LIBAM_SCHOOL_FEE_GUARANTEE", "LIBAM_CARE"],
+        [3929, 47143, 58929, 78572, 78572, 78572, 27500, 19643],
+    ),
     ("Customer Upgrade", ["CUSTOMER_UPGRADE"], [8730, 104763, 130953, 174604, 174604, 174604, 61111, 43651]),
     ("Airtime Top-Up (Including EVD)", ["AIRTIME_TOPUP"], [21826, 261906, 327383, 436511, 436511, 436511, 152779, 109128]),
     ("Sim Card Distribution", ["SIM_DISTRIBUTION"], _WALLET_SIM),
 ]
 
+# code -> (name, csv_label). csv_label is None for services that are not
+# reported as transactions. Only used when a service type has to be created.
+SERVICE_TYPE_DEFAULTS: dict[str, tuple[str, str | None]] = {
+    "CASH_IN": ("Cash In", "Cash In"),
+    "CASH_OUT": ("Cash Out", "Cash Out"),
+    "CUSTOMER_REGISTRATION": ("Customer Registration", None),
+    "BILL_PAYMENT": ("Bill Payment", "Bill Payment"),
+    "LIBAM_INDIVIDUAL": ("Libam Individual", None),
+    "LIBAM_SCHOOL_FEE_GUARANTEE": ("Libam Life Insurance School Fee Guarantee", None),
+    "LIBAM_CARE": ("Libam Care (Hospitalization)", None),
+    "CUSTOMER_UPGRADE": ("Customer Upgrade", None),
+    "AIRTIME_TOPUP": ("Airtime Top Up", "Airtime Top Up"),
+    "SIM_DISTRIBUTION": ("SIM Distribution", None),
+}
+
 
 item_crud = CRUDBase(ServiceTypeTargetItem)
+service_type_crud = CRUDBase(ServiceType)
+
+
+def get_or_create_service_type(db, code: str, actor_id) -> ServiceType:
+    """Return the active service type with this code, creating it when missing."""
+    service_type = db.scalars(
+        select(ServiceType).where(
+            ServiceType.code == code,
+            ServiceType.deleted_at.is_(None),
+        )
+    ).first()
+
+    if service_type is not None:
+        return service_type
+
+    name, csv_label = SERVICE_TYPE_DEFAULTS.get(code, (code.replace("_", " ").title(), None))
+    service_type = service_type_crud.create(
+        db,
+        {"code": code, "name": name, "csv_label": csv_label},
+        actor_id=actor_id,
+    )
+    print(f"  Created service type: {code} ({name})")
+    return service_type
 
 
 def main() -> None:
@@ -105,31 +149,15 @@ def main() -> None:
 
         for name, codes, amounts in DATA:
 
-            # Ensure each service type exists.
-            types = []
-
-            for code in codes:
-                service_type = db.scalars(
-                    select(ServiceType).where(
-                        ServiceType.code == code,
-                        ServiceType.deleted_at.is_(None),
-                    )
-                ).first()
-
-                if service_type is None:
-                    raise SystemExit(
-                        f"Service type {code} not found. "
-                        "Run seed_commission_rates first."
-                    )
-
-                types.append(service_type)
-
-            # Validate monthly amounts.
+            # Validate monthly amounts first, before creating anything.
             if len(amounts) != len(MONTHS):
                 raise ValueError(
                     f"{name}: expected {len(MONTHS)} monthly amounts, "
                     f"got {len(amounts)}."
                 )
+
+            # Make sure each service type exists (create it if not).
+            types = [get_or_create_service_type(db, code, admin.id) for code in codes]
 
             total = sum(Decimal(amount) for amount in amounts)
 

@@ -10,6 +10,8 @@ from app.crud import agent_crud, branch_crud, district_crud
 from app.models import Agent, Branch, District
 from app.schemas.district import DistrictCreate, DistrictDetail, DistrictRead, DistrictUpdate
 from app.services.district_tree import child_ids
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/districts", tags=["districts"])
 
@@ -42,6 +44,8 @@ def list_districts(
     parent_id: uuid.UUID | None = Query(None, description="Only the children of this district"),
 ) -> list[District]:
     conditions = []
+    logger.info("list_districts skip=%s limit=%s q=%s", skip, limit, q)
+    logger.warning("Hi")
     if status_:
         conditions.append(District.status == status_)
     if q:
