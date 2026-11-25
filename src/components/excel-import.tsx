@@ -59,7 +59,7 @@ export function ExcelImportButton({ compact = false }: { compact?: boolean }) {
     setBusy(true);
     try {
       const imported = createCommissionRecords(sheet, mapping, fileName);
-      setRecords(imported);
+      setRecords(imported as any);
       setSheet(null);
       setMapping(null);
       setFileName("");
@@ -74,7 +74,7 @@ export function ExcelImportButton({ compact = false }: { compact?: boolean }) {
     setError("");
     setBusy(true);
     try {
-      await exportCommissionWorkbook(records);
+      await exportCommissionWorkbook(records as any);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The report could not be exported.");
     } finally {

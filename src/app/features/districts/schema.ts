@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 export const districtSchema = z.object({
-  name: z.string().trim().min(1, "Name is required").max(150, "Max 150 characters"),
-  description: z.string().trim().max(500, "Max 500 characters"),
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional().default(""),
+  parent_id: z.string().optional().default(""),
   status: z.enum(["active", "inactive"]),
 });
 

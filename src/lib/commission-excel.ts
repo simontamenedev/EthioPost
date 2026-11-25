@@ -6,7 +6,7 @@ import type {
   CommissionRecord,
   CommissionSummary,
   ParsedSheet,
-} from "@/types/commission";
+} from "../types/commission"
 
 const HEADER_ALIASES: Record<keyof ColumnMapping, string[]> = {
   agent: ["agent", "agent name", "sales agent", "employee", "employee name", "staff name", "collector", "user name", "merchant agent"],

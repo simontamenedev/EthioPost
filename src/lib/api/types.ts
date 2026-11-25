@@ -11,14 +11,17 @@ type Audit = {
 };
 
 export type User = Audit & { name: string; username: string; email: string; role: UserRole };
-export type District = Audit & { name: string; description: string | null,audit:AuditStamp | null,branch_count: string,agent_count:string,parent_id: string | null  };
-export type Branch = Audit & { name: string; description: string | null; district_id: string };
+export type District = Audit & { name: string; description: string | null,audit:AuditStamp | null,branch_count: string,agent_count:string,parent_id: string | null,parent_name: string | null,children: DistrictChild[] };
+export type Branch = Audit & { name: string; description: string | null; district_id: string,audit:AuditStamp | null,agent_count:string,district:{ id: string; name: string } };
 export type Agent = Audit & {
   parent_shortcode: string | null;
   agent_shortcode: string;
   agent_name: string;
   company_service_number: string | null;
   remark: string | null;
+  audit:AuditStamp | null;
+  district:{ id: string; name: string }
+  branch:{ id: string; name: string }
   branch_id: string;
   district_id: string;
 };
@@ -56,6 +59,8 @@ export type ListParams = {
   q?: string;
   status?: Status;
   parents_only?: boolean; parent_id?: string
+   date_from?: string;
+  date_to?: string;
 };
 
 export type CountStat = { total: number; active: number; inactive: number };
@@ -185,6 +190,7 @@ export type ServiceTypeTarget = {
 export type DistrictTarget = {
   phased_percent: string | number;
   id: string;
+  monthly_targets: { month: number; percent: string | number; target_value: string | number }[];
   district_id: string;
   district: { id: string; name: string };
   target_value: string | number;
@@ -208,7 +214,8 @@ export type ServiceTypeTargetPayload = {
 export type ServiceTypeTargetUpdatePayload = Partial<Omit<ServiceTypeTargetPayload, "year">> & {
   keep_percentages?: boolean;
 };
-export type ServiceTypeTargetFilters = { year?: number; service_type_id?: string };
+export type ServiceTypeTargetFilters = { year?: number; service_type_id?: string, date_from?: string;
+  date_to?: string; };
 
 export type DistrictAllocationMode = "value" | "percent" | "even";
 export type DistrictAllocationPayload = {

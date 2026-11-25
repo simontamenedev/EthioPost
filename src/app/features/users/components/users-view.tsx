@@ -59,7 +59,7 @@ export function UsersView() {
       updateMutation={update}
       deleteMutation={remove}
       createSchema={userCreateSchema}
-      updateSchema={userUpdateSchema}
+      updateSchema={userUpdateSchema as any}
       fields={fields}
       emptyValues={{ name: "", username: "", email: "", password: "", role: "user", status: "active" }}
       toFormValues={(u) => ({ name: u.name, username: u.username, email: u.email, password: "", role: u.role, status: u.status })}

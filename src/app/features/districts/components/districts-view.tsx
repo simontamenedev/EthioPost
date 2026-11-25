@@ -74,7 +74,7 @@ export function DistrictsView() {
       createMutation={create}
       updateMutation={update}
       deleteMutation={remove}
-      createSchema={districtSchema}
+      createSchema={districtSchema as any}
       fields={fields}
       emptyValues={{ name: "", description: "", parent_id: "", status: "active" }}
       toFormValues={(d) => ({

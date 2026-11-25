@@ -83,7 +83,7 @@ export function ServiceTypesView() {
       createMutation={create}
       updateMutation={update}
       deleteMutation={remove}
-      createSchema={serviceTypeSchema}
+      createSchema={serviceTypeSchema as any}
       fields={fields}
       emptyValues={{ code: "", name: "", csv_label: "", description: "", status: "active",sort_order: 100  }}
       toFormValues={(r) => ({
