@@ -29,10 +29,19 @@ type RequestOptions = {
 };
 
 function buildUrl(path: string, query?: object): string {
-  const url = new URL(`${API_URL}${path}`);
+  const baseUrl =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : "http://localhost";
+
+  const url = new URL(`${API_URL}${path}`, baseUrl);
+
   for (const [key, value] of Object.entries(query ?? {})) {
-    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
   }
+
   return url.toString();
 }
 
@@ -81,10 +90,23 @@ async function request(path: string, options: RequestOptions = {}): Promise<Resp
   let res: Response;
   try {
     res = await fetch(buildUrl(path, query), { method, headers, body, signal });
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") throw error;
-    throw new ApiError(0, "Cannot reach the server. Check your connection and try again.");
+ } catch (error) {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    throw error;
   }
+
+  console.error("[API] Request failed:", {
+    url: `${API_URL}${path}`,
+    error,
+  });
+
+  throw new ApiError(
+    0,
+    error instanceof Error
+      ? error.message
+      : "Unknown network error"
+  );
+}
 
   if (res.status === 401 && auth) {
     // Token missing/expired/revoked → drop the session and go to login.
